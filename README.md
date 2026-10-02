@@ -5,7 +5,7 @@ A 3D social-deduction game about melting water puddles with googly eyes. Most pl
 **Special roles:** 🧽 Sponge (Fire, leaves no body), 🪣 Bucket (Fire, scoops puddles and dumps them in 4 big buckets), 🚽 Toilet (Water, flushes from any vent to any vent), 🌧️ Raining (Water, washes away emergencies from anywhere), 🧯 Fire Extinguisher (Water, revives 2 unreported burned bodies per game).
 
 - **PLAY SOLO**: you plus computer puddles. Runs entirely in the page and works offline in the Mac app.
-- **PLAY ONLINE**: public lobbies, 4-letter codes and invite links. Up to 12 people, and computer puddles fill the empty seats.
+- **PLAY ONLINE**: real players only (3–12, no computer puddles), with public lobbies, 4-letter codes and invite links.
 - **5 maps**: Pump Station, Glacier Lab, Magma Rig, Bathhouse and Sky Tanker. Each has two outdoor areas with fences or hedges, ponds and trees.
 - **Walk-around courtyard lobby** for online games: walk with WASD, chat with T, and visit the wardrobe.
 - **Wardrobe**: 11 hats, 9 shirts and 8 pets that follow you.

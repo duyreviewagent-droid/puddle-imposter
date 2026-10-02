@@ -927,8 +927,10 @@ function drawLobby() {
     d.append(c); d.insertAdjacentHTML('beforeend', `<div>${p.name}${p.id === myNetId ? ' (you)' : ''}${p.id === L.host ? ' 👑' : ''}</div>`);
     box.append(d);
   }
-  const o = L.opts, bots = Math.max(0, o.count - L.players.length);
-  $('lb-sum').textContent = `${o.mapId < 0 ? 'Random map' : MAPS[o.mapId].name} · ${o.imps} Fire · ${L.players.length} player${L.players.length > 1 ? 's' : ''} + ${bots} computer puddle${bots === 1 ? '' : 's'} · kill cooldown ${o.killCd}s`;
+  const o = L.opts, n = L.players.length, fire = Math.max(1, Math.min(o.imps, Math.floor((n - 1) / 3) || 1));
+  $('lb-sum').textContent = `${o.mapId < 0 ? 'Random map' : MAPS[o.mapId].name} · ${n} real player${n > 1 ? 's' : ''} (no computer puddles) · ${fire} Fire · kill cooldown ${o.killCd}s`;
+  $('lb-start').disabled = n < 3; $('lb-start').style.opacity = n < 3 ? 0.45 : 1;
+  $('lb-start').innerHTML = n < 3 ? `▶ START GAME<small style="display:block;font-size:12px">need ${3 - n} more player${3 - n > 1 ? 's' : ''} — share the code</small>` : '▶ START GAME';
   $('lb-host').classList.toggle('hidden', !host);
   $('lb-start').classList.toggle('hidden', !host);
   $('lb-wait').classList.toggle('hidden', host);
@@ -936,15 +938,13 @@ function drawLobby() {
   if (host) {
     const sel = $('lb-map'); if (!sel.options.length) { sel.add(new Option('Random map', -1)); MAPS.forEach(m => sel.add(new Option(m.name, m.id))); }
     sel.value = o.mapId;
-    for (const b of $('lb-count').children) b.classList.toggle('on', +b.dataset.v === o.count);
     for (const b of $('lb-imps').children) b.classList.toggle('on', +b.dataset.v === o.imps);
   }
 }
 let myNetId = 0;
 function lobbyOpts(patch) { nsend({ t: 'opts', opts: { ...lobbyState.opts, ...patch } }); }
 $('lb-map').onchange = e => lobbyOpts({ mapId: +e.target.value });
-for (const b of $('lb-count').children) b.onclick = () => lobbyOpts({ count: +b.dataset.v, imps: Math.min(lobbyState.opts.imps, maxImps(Math.max(+b.dataset.v, lobbyState.players.length))) });
-for (const b of $('lb-imps').children) b.onclick = () => lobbyOpts({ imps: Math.min(+b.dataset.v, maxImps(Math.max(lobbyState.opts.count, lobbyState.players.length))) });
+for (const b of $('lb-imps').children) b.onclick = () => lobbyOpts({ imps: +b.dataset.v });
 $('lb-start').onclick = () => { initAudio(); nsend({ t: 'start' }); };
 $('lb-leave').onclick = () => { leaveOnline(); showOnline(); };
 // copy that works everywhere: the Mac app's native clipboard, the browser clipboard, or the old select-and-copy trick

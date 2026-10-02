@@ -12,7 +12,7 @@ import { cleanCos } from './js/cosdata.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8000);
-const MAX = 12, TICK = 1 / 30, DISCUSS = 30, VOTE = 40;
+const MAX = 12, MIN = 3, TICK = 1 / 30, DISCUSS = 30, VOTE = 40;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon' };
 
 const server = http.createServer((req, res) => {
@@ -57,9 +57,9 @@ class Room {
   }
   leave(c) {
     this.clients = this.clients.filter(x => x !== c); c.room = null;
-    if (this.game && c.slot != null) {           // their puddle keeps playing as a computer
-      const p = this.game.players[c.slot];
-      if (p) { p.human = false; p.ai = this.game.newAI(p); p.name += ' (bot)'; }
+    if (this.game && c.slot != null) {           // no bots online: whoever leaves just disappears from the round
+      const g = this.game, p = g.players[c.slot];
+      if (p && p.alive) { p.alive = false; p.ejected = true; p.left = true; p.carry = -1; this.all({ t: 'chat', pid: p.id, text: '(left the game)' }); g.checkWin(); if (g.winner && this.state === 'play') { this.flush(); this.finish(); } }
     }
     if (!this.clients.length) { rooms.delete(this.code); return; }
     if (this.host === c.id) this.host = this.clients[0].id;
@@ -67,10 +67,12 @@ class Room {
   }
   start() {
     if (this.state !== 'lobby') return;
+    if (this.clients.length < MIN) { const h = this.clients.find(c => c.id === this.host); if (h) send(h.ws, { t: 'err', msg: `Online games are real players only — you need at least ${MIN} puddles in the lobby (now ${this.clients.length}). Share the code!` }); return; }
     const o = this.opts, mapId = o.mapId < 0 ? Math.floor(Math.random() * MAPS.length) : o.mapId;
     const seed = Math.floor(Math.random() * 1e9);
     const humans = this.clients.map(c => ({ name: c.name, color: c.color, cos: c.cos }));
-    const g = this.game = new Game({ ...o, mapId, seed, humans, count: Math.max(o.count, humans.length) });
+    const imps = Math.max(1, Math.min(o.imps, Math.floor((humans.length - 1) / 3) || 1));
+    const g = this.game = new Game({ ...o, imps, mapId, seed, humans, count: humans.length });     // no computer puddles online
     this.state = 'play'; this.M = null; this.ejectT = 0;
     this.clients.forEach((c, i) => {
       c.slot = i; c.tp = 0; c.lastSay = 0;

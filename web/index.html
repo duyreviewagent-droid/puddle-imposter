@@ -22,7 +22,7 @@
       <h1><span class="w">PUDDLE</span><span class="r">IMPOSTER</span></h1>
       <p class="sub">You are a melting puddle with googly eyes. Most of you are Water. Some of you are secretly Fire.<br>Get voted out and you jump into the lava.</p>
       <button id="b-solo" class="big green">▶ PLAY SOLO<small>you + computer puddles · starts right away</small></button>
-      <button id="b-online" class="big blue online">🌐 PLAY ONLINE<small>optional · lobbies · codes · invite friends</small></button>
+      <button id="b-online" class="big blue online">🌐 PLAY ONLINE<small>optional · real players only · lobbies · codes · invite friends</small></button>
       <div class="stats" id="stats"></div>
       <div class="row"><button id="b-ward" class="grey">👕 Wardrobe</button><button id="b-music" class="grey">♪ Music</button><button id="b-sfx" class="grey">🔊 Sound</button><button id="b-fs" class="grey">⛶ Full screen</button><button id="b-help" class="grey">? How to play</button></div>
     </div>
@@ -52,7 +52,7 @@
     <div class="onrow"><input id="on-code" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false"><button id="on-join" class="blue">JOIN WITH CODE</button></div>
     <div class="lab">PUBLIC LOBBIES</div>
     <div id="on-list"></div>
-    <div class="onfoot">Lobbies use the map and options you picked on the title screen. Empty seats are filled with computer puddles.</div>
+    <div class="onfoot">Online is real players only (3–12, no computer puddles). Lobbies use the map and options you picked on the title screen.</div>
     <button id="on-back" class="grey">◀ Back</button>
   </div>
 </section>
@@ -64,7 +64,6 @@
     <div id="lb-sum" class="lbsum"></div>
     <div id="lb-host" class="lbhost">
       <select id="lb-map"></select>
-      <div><span class="lab">PUDDLES</span> <div class="seg" id="lb-count"><b data-v="6">6</b><b data-v="8">8</b><b data-v="10">10</b><b data-v="12">12</b></div></div>
       <div><span class="lab">FIRE</span> <div class="seg" id="lb-imps"><b data-v="1">1</b><b data-v="2">2</b><b data-v="3">3</b></div></div>
     </div>
     <div class="row"><button id="lb-start" class="big green">▶ START GAME</button><div id="lb-wait" class="lbwait"></div><button id="lb-ward" class="grey">👕</button><button id="lb-leave" class="grey">Leave</button></div>
