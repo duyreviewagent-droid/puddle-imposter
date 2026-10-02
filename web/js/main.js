@@ -530,7 +530,8 @@ function frame(now) {
     else if (S === 'map') drawMap($('bigmapc'), true);
   }
   composer.render();
-  requestAnimationFrame(frame);
+  if (Q.has('copytest')) setTimeout(() => copyText(Q.get('copytest')), 1500);
+requestAnimationFrame(frame);
 }
 
 function playUpdate(dt) {
