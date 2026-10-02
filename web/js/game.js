@@ -46,6 +46,7 @@ export class Game {
       if (humans.length === 1 && ROLES[o.role] && o.role !== 'water' && o.role !== 'fire') this.players[0].role = o.role;
       give(FIRE_SPECIALS.filter(r => r !== this.players[0].role), 'fire'); give(WATER_SPECIALS.filter(r => r !== this.players[0].role), 'water');
     }
+    for (const p of this.players) { p.frozen = 0; if (p.role === 'ice') p.uses = ROLES.ice.uses; }
     // tasks: everyone gets a list (imposters get a fake one)
     for (const p of this.players) {
       const pool = M.tasks.map(t => t.id).sort(() => R() - 0.5);
@@ -153,6 +154,7 @@ export class Game {
 
   // ------------------------------------------------------------------ what a player can interact with
   usable(p) {
+    if (p.frozen > 0 || p.spirit) return null;
     const M = this.map, out = [];
     const d = (x, z) => Math.hypot(p.x - x, p.z - z);
     if (this.sab && this.sab.type === 'lights' && p.alive && !p.imp && d(M.lights.x, M.lights.z) < USE_R + 0.3) out.push({ kind: 'lights', d: d(M.lights.x, M.lights.z) });
@@ -174,8 +176,11 @@ export class Game {
     if (!p.alive) return null;
     if (p.role === 'bucket') { const d = this.dumpNear(p); return d >= 0 ? { kind: 'dump', i: d } : null; }
     if (p.role === 'toilet') { const v = this.anyVentNear(p); return v >= 0 && p.abilCd <= 0 && p.inVent < 0 ? { kind: 'flush', i: v } : null; }
+    if (p.frozen > 0) return null;
     if (p.role === 'rain') return this.sab && p.abilCd <= 0 ? { kind: 'rain' } : null;
     if (p.role === 'ext') { const b = this.reviveTarget(p); return b ? { kind: 'revive', body: b } : null; }
+    if (p.role === 'evap') return p.spirit ? { kind: 'return' } : p.abilCd <= 0 && p.inVent < 0 ? { kind: 'evaporate' } : null;
+    if (p.role === 'ice') return p.uses > 0 && p.abilCd <= 0 && p.inVent < 0 ? { kind: 'freeze' } : null;
     return null;
   }
   dump(p) { const d = this.dumpNear(p); if (d < 0) return; const v = this.map.dumps[d]; this.emit({ type: 'dump', p: p.id, victim: p.carry, x: v.x, z: v.z }); p.carry = -1; }
@@ -184,6 +189,29 @@ export class Game {
     const a = this.map.vents[i], b = this.map.vents[j];
     p.x = b.x; p.z = b.z; p.tp = (p.tp || 0) + 1; p.abilCd = ROLES.toilet.cd; p.holding = -1;
     this.emit({ type: 'flush', p: p.id, x: a.x, z: a.z, x2: b.x, z2: b.z });
+  }
+  freeze(p) {
+    if (p.role !== 'ice' || !p.alive || p.uses <= 0 || p.abilCd > 0 || this.state !== 'play') return;
+    p.uses--; p.abilCd = ROLES.ice.cd;
+    for (const q of this.players) if (q.alive && !q.imp) { q.frozen = 1; q.iceT = 0; q.breaks = 0; q.holding = -1; q.vx = q.vz = 0; q.breakSpeed = 3 + this.R() * 5; }
+    this.emit({ type: 'freeze', p: p.id, uses: p.uses });
+  }
+  // one click/tap on the ice. Only counts after the first 2 seconds; 12 of them and you're free
+  breakIce(q) {
+    if (!(q.frozen > 0) || q.iceT < ROLES.ice.minT) return;
+    q.breaks++;
+    if (q.breaks >= ROLES.ice.breaks) { q.frozen = 0; this.emit({ type: 'thaw', p: q.id }); }
+  }
+  // Evaporation: leave the body as vapor (the body stays where it is), come back later
+  evaporate(p) {
+    if (p.role !== 'evap' || !p.alive || p.spirit || p.abilCd > 0 || p.frozen > 0 || this.state !== 'play') return;
+    p.spirit = { t: ROLES.evap.dur }; p.holding = -1; p.vx = p.vz = 0;
+    this.emit({ type: 'evap', p: p.id, x: p.x, z: p.z });
+  }
+  condense(p) {
+    if (!p.spirit) return;
+    p.spirit = null; p.abilCd = ROLES.evap.cd;
+    this.emit({ type: 'condense', p: p.id, x: p.x, z: p.z });
   }
   rain(p) {
     if (p.role !== 'rain' || !this.sab || p.abilCd > 0 || !p.alive) return;
@@ -203,7 +231,7 @@ export class Game {
     if (p.ai) { p.ai.sus[b.killer] = Math.max(p.ai.sus[b.killer], 60); }
   }
   ventNear(p) { if (!p.imp || !p.alive || p.carry >= 0) return -1; let best = -1, bd = VENT_R; this.map.vents.forEach((v, i) => { const dd = Math.hypot(p.x - v.x, p.z - v.z); if (dd < bd) { bd = dd; best = i; } }); return best; }
-  bodyNear(p) { if (!p.alive) return null; let best = null, bd = REPORT_R; for (const b of this.bodies) { const dd = Math.hypot(p.x - b.x, p.z - b.z); if (dd < bd && this.los(p.x, p.z, b.x, b.z)) { bd = dd; best = b; } } return best; }
+  bodyNear(p) { if (!p.alive || p.frozen > 0 || p.spirit) return null; let best = null, bd = REPORT_R; for (const b of this.bodies) { const dd = Math.hypot(p.x - b.x, p.z - b.z); if (dd < bd && this.los(p.x, p.z, b.x, b.z)) { bd = dd; best = b; } } return best; }
   killTarget(p) {
     if (!p.imp || !p.alive || p.inVent >= 0 || p.killCd > 0 || p.carry >= 0) return null;
     let best = null, bd = KILL_R;
@@ -220,7 +248,7 @@ export class Game {
   }
   kill(k, v) {
     if (!v.alive || this.state !== 'play') return;
-    v.alive = false; v.deadT = this.time; v.holding = -1;
+    v.alive = false; v.deadT = this.time; v.holding = -1; if (v.spirit) { v.spirit = null; }
     const style = k.role === 'sponge' ? 'sponge' : k.role === 'bucket' ? 'bucket' : 'fire';
     if (style === 'fire') this.bodies.push({ pid: v.id, x: v.x, z: v.z, t: this.time, room: roomName(this.map, v.x, v.z), style, killer: k.id });
     if (style === 'bucket') k.carry = v.id;
@@ -230,7 +258,7 @@ export class Game {
     // witnesses
     for (const w of this.players) {
       if (!w.alive || w === k || !w.ai || w.imp) continue;
-      if (this.canSee(w, k.x, k.z)) {
+      if (w.spirit || this.canSee(w, k.x, k.z)) {
         w.ai.claims.push({ kind: 'kill', who: k.id, victim: v.id, room: roomName(this.map, k.x, k.z), t: this.time });
         w.ai.sus[k.id] = 100;
         if (style === 'fire') { w.ai.mode = 'report'; w.ai.goal = { x: v.x, z: v.z }; w.ai.path = null; }
@@ -250,7 +278,7 @@ export class Game {
   ventWitness(p, v) {
     for (const w of this.players) {
       if (!w.alive || w === p || !w.ai || w.imp) continue;
-      if (this.canSee(w, v.x, v.z)) {
+      if (w.spirit || this.canSee(w, v.x, v.z)) {
         w.ai.claims.push({ kind: 'vent', who: p.id, room: roomName(this.map, v.x, v.z), t: this.time });
         w.ai.sus[p.id] = Math.max(w.ai.sus[p.id], 92);
         if (w.meetings > 0 && this.buttonCd <= 0) { w.ai.mode = 'button'; w.ai.path = null; }
@@ -288,7 +316,7 @@ export class Game {
   // called by the meeting screen when votes are in
   endMeeting(ejectId) {
     if (ejectId >= 0) { const p = this.players[ejectId]; p.alive = false; p.ejected = true; p.deadT = this.time; p.carry = -1; }
-    for (const p of this.players) p.carry = -1;      // a meeting empties every bucket
+    for (const p of this.players) { p.carry = -1; p.frozen = 0; if (p.spirit) { p.spirit = null; p.abilCd = ROLES.evap.cd; } }      // a meeting empties every bucket and thaws everyone
     this.bodies = []; this.sab = null; this.sabCd = 15; this.buttonCd = 15;
     for (const p of this.players) { p.killCd = this.o.killCd; p.voted = null; if (p.ai) { p.ai.claims = p.ai.claims.filter(c => this.time - c.t < 1); p.ai.with.fill(0); } }
     this.spawn();
@@ -309,7 +337,13 @@ export class Game {
   update(dt) {
     if (this.state !== 'play') return;
     this.time += dt; this.buttonCd -= dt; if (!this.sab) this.sabCd -= dt;
-    for (const p of this.players) { if (p.alive) { p.killCd = Math.max(0, p.killCd - dt); p.abilCd = Math.max(0, p.abilCd - dt); } p.room = roomName(this.map, p.x, p.z); }
+    for (const p of this.players) { if (p.alive) { p.killCd = Math.max(0, p.killCd - dt); p.abilCd = Math.max(0, p.abilCd - dt); }
+      if (p.spirit) { p.spirit.t -= dt; if (p.spirit.t <= 0 || !p.alive) this.condense(p); }
+      if (p.frozen > 0) {
+        p.iceT += dt;
+        if (p.ai && p.iceT >= ROLES.ice.minT && this.R() < dt * p.breakSpeed) this.breakIce(p);     // computer puddles spam their way out
+        if (p.iceT > 30 && p.frozen > 0) { p.frozen = 0; this.emit({ type: 'thaw', p: p.id }); }   // safety net
+      } p.room = roomName(this.map, p.x, p.z); }
     // sabotage timers
     if (this.sab && this.sab.type === 'heat') {
       this.sab.t -= dt;
@@ -332,6 +366,10 @@ export class Game {
       const s = Math.min(d, SPEED * 0.8 * dt); p.vx = dx / d * SPEED * 0.8; p.vz = dz / d * SPEED * 0.8;
       this.move(p, dx / d * s, dz / d * s, true); p.face = Math.atan2(dx, dz); return;
     }
+    if (p.spirit) { p.vx = p.vz = 0; const c = p.ai.claims.find(c => (c.kind === 'kill' || c.kind === 'vent') && this.time - c.t < 0.5); if (c && p.spirit.t < 17) this.condense(p); return; }
+    if (p.role === 'evap' && p.abilCd <= 0 && !this.sab && (A.mode === 'idle' || A.mode === 'doing') && this.R() < dt * 0.08) { this.evaporate(p); return; }
+    if (p.frozen > 0) { p.vx = p.vz = 0; p.holding = -1; if (!A.sawFreeze) { A.sawFreeze = true; A.claims.push({ kind: 'frozen', t: this.time }); } return; }
+    A.sawFreeze = false;
     // perception
     A.thinkT -= dt;
     if (A.thinkT <= 0) {
@@ -504,6 +542,10 @@ export class Game {
     if (p.inVent >= 0 || A.mode === 'flee' || A.mode === 'vent' || A.mode === 'report') return;
     // sabotage now and then
     if (!this.sab && this.sabCd <= 0 && this.R() < 0.012 * (0.5 + this.o.smarts * 0.5)) this.sabotage(this.R() < 0.6 ? 'lights' : 'heat');
+    if (p.role === 'ice' && p.uses > 0 && p.abilCd <= 0 && p.killCd <= 0.5 && this.R() < 0.25) {
+      const q = this.players.find(q => q.alive && !q.imp && q.inVent < 0 && Math.hypot(q.x - p.x, q.z - p.z) < 9 && this.sees(p, q));
+      if (q) { this.freeze(p); A.mode = 'hunt'; A.target = q.id; A.huntT = 9; A.path = null; A.blind = new Set(this.players.map(w => w.id)); return; }
+    }
     if (p.killCd > 0 || A.mode === 'hunt' || p.carry >= 0 || A.mode === 'dump') return;
     const crewLeft = this.crewAlive();
     const urge = A.aggro * (0.45 + this.o.smarts * 0.35) * (crewLeft <= 3 ? 1.6 : 1);

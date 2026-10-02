@@ -247,3 +247,10 @@ h1 .r { font-size: 62px; color: #ff4a3a; text-shadow: 0 0 24px rgba(255,60,30,.7
 
 #lb-code { cursor: pointer; user-select: text; -webkit-user-select: text; }
 input { user-select: text; -webkit-user-select: text; }
+
+#iceov { position: fixed; inset: 0; z-index: 7; cursor: pointer; }
+#ice-c { position: absolute; inset: 0; width: 100%; height: 100%; }
+#ice-txt { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); text-align: center; font-size: 46px; font-weight: 900; color: #eaf8ff; text-shadow: 0 0 20px #3ab0ff, 0 4px 0 #1a4a7a; pointer-events: none; letter-spacing: 2px; }
+#ice-txt small { display: block; font-size: 20px; letter-spacing: 1px; margin-top: 8px; color: #cfeeff; }
+#iceov.shake #ice-txt { animation: ishake .15s; }
+@keyframes ishake { 25% { transform: translate(calc(-50% - 8px), -50%); } 75% { transform: translate(calc(-50% + 8px), -50%); } }

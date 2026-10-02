@@ -164,6 +164,14 @@ export const sfx = {
     osc('sine', 60, 40, t + 0.2, 1.5, 0.4, o, 0.3);                                            // distant thunder
     noise(t + 0.2, 1.8, 0.4, o, { type: 'lowpass', f0: 200, f1: 60, a: 0.3, buf: brownBuf });
   },
+  freeze() {
+    if (!ok()) return; const t = ctx.currentTime, o = out(0.5, 0, 0.6);
+    noise(t, 0.6, 0.6, o, { type: 'highpass', f0: 6000, f1: 2500, a: 0.01 });                   // frost rushing in
+    for (let i = 0; i < 26; i++) noise(t + R(0, 0.9), 0.02, R(0.3, 0.8), o, { type: 'bandpass', f0: R(3000, 8000), q: 6 });   // cracking
+    [1568, 2093, 2637, 3136].forEach((f, i) => osc('sine', f, f, t + 0.15 + i * 0.06, 1.6, 0.12, o, 0.002));                 // glassy chime
+    osc('sine', 80, 40, t, 0.5, 0.6, o);
+  },
+  thaw() { if (!ok()) return; const t = ctx.currentTime, o = out(0.3, 0, 0.4); noise(t, 0.5, 0.5, o, { type: 'bandpass', f0: 1500, f1: 600, q: 1 }); for (let i = 0; i < 4; i++) this.drip(0.6); },
   revive() { if (!ok()) return; const t = ctx.currentTime, o = out(0.4, 0, 0.5); noise(t, 1.2, 0.8, o, { type: 'highpass', f0: 2500, a: 0.02 }); [523, 659, 784, 1046, 1318].forEach((f, i) => osc('triangle', f, f, t + 0.4 + i * 0.08, 0.6, 0.3, o)); },
   crewReveal() { if (!ok()) return; const t = ctx.currentTime, o = out(0.4, 0, 0.5); for (const f of [262, 330, 392, 523]) osc('triangle', f, f, t, 2.2, 0.18, o, 0.25); },
 };

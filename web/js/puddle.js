@@ -125,6 +125,25 @@ export class Puddle {
     }
     if (this.shirt) { this.shirt.visible = !this.ghost && d < 0.5; this.shirt.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq)); }
   }
+  setFrozen(on) {
+    if (!!this.frozen === on) return; this.frozen = on;
+    const m = this.body.material;
+    if (on) {
+      this.saved = { color: m.color.getHex(), rough: m.roughness, tr: m.transmission, att: m.attenuationDistance };
+      m.color.setHex(0xeaf8ff); m.roughness = 0.32; m.transmission = 0.55; m.attenuationDistance = 0.25; m.iridescence = 0.6;
+      if (!this.ice) {
+        this.ice = new THREE.Group();
+        const iceMat = new THREE.MeshPhysicalMaterial({ color: 0xdff6ff, roughness: 0.15, transmission: 0.7, thickness: 0.3, ior: 1.31, clearcoat: 1 });
+        for (let k = 0; k < 9; k++) { const a = k / 9 * Math.PI * 2 + Math.random() * 0.3, h = 0.25 + Math.random() * 0.35; const c = new THREE.Mesh(new THREE.ConeGeometry(0.06 + Math.random() * 0.04, h, 5), iceMat); c.position.set(Math.cos(a) * 0.52, h / 2 - 0.02, Math.sin(a) * 0.52); c.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); c.castShadow = true; this.ice.add(c); }
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.47, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), iceMat); cap.scale.set(1, 2.3, 1); cap.position.y = 0; this.ice.add(cap);
+        this.group.add(this.ice);
+      }
+      this.ice.visible = true;
+    } else if (this.saved) {
+      m.color.setHex(this.saved.color); m.roughness = this.saved.rough; m.transmission = this.saved.tr; m.attenuationDistance = this.saved.att; m.iridescence = 0;
+      if (this.ice) this.ice.visible = false;
+    }
+  }
   setGlow(on) { this.glow.visible = on; this.halo.visible = on; }
   setGhost(on) {
     this.ghost = on;
@@ -161,6 +180,7 @@ export class Puddle {
   }
   // dt seconds; vx,vz world velocity; face = heading radians (0 = +z)
   update(dt, t, vx, vz, face) {
+    if (this.frozen) { vx = vz = 0; t = this.frozeT ??= t; } else this.frozeT = null;      // solid ice: no slosh, no jiggle
     this.vel.set(vx, vz);
     let d = face - this.heading; d = Math.atan2(Math.sin(d), Math.cos(d));
     this.heading += d * Math.min(1, dt * 10);

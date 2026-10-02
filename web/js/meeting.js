@@ -67,6 +67,8 @@ function statement(g, p) {
     const recent = A.claims.filter(c => g.time - c.t < 120);
     const k = recent.find(c => c.kind === 'kill' && g.players[c.who].alive);
     if (k && M.by !== p.id) { accuse(g, p.id, k.who, 70); return { pid: p.id, text: `it was ${nm(g, k.who).toUpperCase()}. I watched them ${verb(g, k.who).toLowerCase()} ${nm(g, k.victim)} in ${k.room}` }; }
+    const fr = recent.find(c => c.kind === 'frozen');
+    if (fr && R() < 0.35) return { pid: p.id, text: pick(R, ['someone FROZE everyone, there is an Ice among us', 'I got frozen solid and couldn\'t move', 'ice froze me again 🧊 vote carefully']) };
     const bm = recent.find(c => c.kind === 'burnedMe' && g.players[c.who].alive);
     if (bm) { accuse(g, p.id, bm.who, 85); return { pid: p.id, text: `${nm(g, bm.who).toUpperCase()} SET ME ON FIRE in ${bm.room}!! someone put me out` }; }
     const cr = recent.find(c => c.kind === 'carry' && g.players[c.who].alive);
@@ -174,7 +176,7 @@ export function parseSay(g, pid, text) {
   if (target != null) {
     if (/vent/.test(t)) kind = 'vent';
     else if (/ (safe|with|clear|innocent|trust|not (him|her|them|it)|wasn t|wasnt) /.test(t)) kind = 'with';
-    else if (/(sus|kill|fire|burn|imposter|impostor|imp |vote|did it|saw|liar|lying|faking|fake|bucket|sponge)/.test(t)) kind = 'accuse';
+    else if (/(sus|kill|fire|burn|ice|froze|freeze|imposter|impostor|imp |vote|did it|saw|liar|lying|faking|fake|bucket|sponge)/.test(t)) kind = 'accuse';
   }
   return { kind, target };
 }
