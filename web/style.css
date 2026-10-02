@@ -259,3 +259,8 @@ input { user-select: text; -webkit-user-select: text; }
   background: radial-gradient(ellipse at 50% 0%, rgba(120,210,255,.18), rgba(10,70,140,.42) 70%, rgba(5,30,70,.62));
   animation: none; }
 @keyframes caust { from { background-position: 0 0, 0 0; } to { background-position: 0 0, 120px 80px; } }
+
+#meteorpick { background: rgba(40,0,0,.5); z-index: 14; }
+#meteor-list { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 12px 0; }
+#meteor-list button { background: #5a1a0a; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+#meteor-list canvas { width: 36px; height: 36px; }

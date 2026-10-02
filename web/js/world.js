@@ -613,6 +613,36 @@ export class World {
     this.floodTex.offset.x += dt * 0.02; this.floodTex.offset.y += dt * 0.013;
     if (target && Math.random() < dt * 25) { const d = this.drips.find(d => !d.on); if (d) { d.on = true; d.m.visible = true; d.m.position.set(this.lastFocus.x + (Math.random() - 0.5) * 22, 0.1, this.lastFocus.z + (Math.random() - 0.5) * 16); d.v.set(0, 2.2, 0); d.m.scale.setScalar(0.6 + Math.random()); } }
   }
+  // Eruption: a red warning circle, then a glowing rock streaking down from the sky
+  meteorFx(list) {
+    this.meteorObjs ||= new Map();
+    const live = new Set(list.map(m => m.id));
+    for (const [id, o] of this.meteorObjs) if (!live.has(id)) { this.scene.remove(o.ring, o.rock, o.trail); this.meteorObjs.delete(id); }
+    for (const m of list) {
+      let o = this.meteorObjs.get(m.id);
+      if (!o) {
+        const ring = new THREE.Mesh(new THREE.RingGeometry(1.45, 1.7, 48), new THREE.MeshBasicMaterial({ color: 0xff2a10, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending })); ring.rotation.x = -Math.PI / 2;
+        const fill = new THREE.Mesh(new THREE.CircleGeometry(1.45, 48), new THREE.MeshBasicMaterial({ color: 0xff3a10, transparent: true, opacity: 0.18, depthWrite: false })); fill.rotation.x = -Math.PI / 2; ring.add(fill); fill.rotation.x = 0;
+        const rockG = new THREE.DodecahedronGeometry(0.55, 1); const pp = rockG.attributes.position; for (let i = 0; i < pp.count; i++) pp.setXYZ(i, pp.getX(i) * (0.85 + Math.random() * 0.3), pp.getY(i) * (0.85 + Math.random() * 0.3), pp.getZ(i) * (0.85 + Math.random() * 0.3)); rockG.computeVertexNormals();
+        const rock = new THREE.Mesh(rockG, new THREE.MeshStandardMaterial({ color: 0x2a1a12, emissive: 0xff5a10, emissiveIntensity: 1.6, roughness: 0.9 }));
+        const trail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.5, 10, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+        this.scene.add(ring, rock, trail); o = { ring, rock, trail }; this.meteorObjs.set(m.id, o);
+      }
+      const k = Math.max(0, Math.min(1, 1 - m.t / 2));     // 0 → 1 as it falls
+      o.ring.position.set(m.x, 0.04, m.z); o.ring.scale.setScalar(1 + Math.sin(this.t * 14) * 0.05); o.ring.material.opacity = 0.5 + k * 0.5;
+      const y = 40 * (1 - k * k), off = 18 * (1 - k * k);
+      o.rock.position.set(m.x + off * 0.6, y, m.z - off * 0.4); o.rock.rotation.x += 0.2; o.rock.rotation.y += 0.13;
+      o.trail.position.set(m.x + (off + 4) * 0.6, y + 5.5, m.z - (off + 4) * 0.4); o.trail.lookAt(o.rock.position); o.trail.rotateX(Math.PI / 2);
+      if (Math.random() < 0.6) this.puffSmoke(o.rock.position.x, o.rock.position.z, false);
+    }
+  }
+  impact(x, z, fizzle) {
+    if (fizzle) { this.steamFx(x, z, 2); this.burst(x, 0.6, z, 24, 2); return; }
+    this.fire(x, z, 1.8, 1.6); this.burst(x, 0.6, z, 40, 5); this.wetSpot(x, z, 3.2, 99999);
+    for (let i = 0; i < 8; i++) this.puffSmoke(x + (Math.random() - 0.5) * 2, z + (Math.random() - 0.5) * 2, false);
+    const crater = new THREE.Mesh(new THREE.CircleGeometry(1.3, 24), new THREE.MeshStandardMaterial({ color: 0x120a06, emissive: 0x401004, roughness: 1, transparent: true, opacity: 0.85, alphaMap: blobTexture(), depthWrite: false }));
+    crater.rotation.x = -Math.PI / 2; crater.position.set(x, 0.016, z); this.scene.add(crater);
+  }
   rainbowAt(id, x, z, on) {
     this.rainbows ||= new Map();
     let r = this.rainbows.get(id);

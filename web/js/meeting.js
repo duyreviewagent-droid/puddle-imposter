@@ -87,6 +87,7 @@ function statement(g, p) {
     const recent = A.claims.filter(c => g.time - c.t < 120);
     const k = recent.find(c => c.kind === 'kill' && g.players[c.who].alive);
     if (k && M.by !== p.id) { accuse(g, p.id, k.who, 70); return { pid: p.id, text: `it was ${nm(g, k.who).toUpperCase()}. I watched them ${verb(g, k.who).toLowerCase()} ${nm(g, k.victim)} in ${k.room}` }; }
+    if (g.meeting.body >= 0 && g.players[g.meeting.body] && R() < 0.12) return { pid: p.id, text: pick(R, ['was that an ASTEROID??', 'something fell out of the sky', 'there is an Eruption among us 🌋']) };
     const fl = g.lastFlood && g.time - g.lastFlood < 90;
     if (fl && R() < 0.15) return { pid: p.id, text: pick(R, ['thank you whoever flooded the map 🌊', 'the underwater one saved us', 'flooding was so clutch']) };
     const fr = recent.find(c => c.kind === 'frozen');

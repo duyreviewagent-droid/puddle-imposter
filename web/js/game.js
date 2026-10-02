@@ -48,7 +48,8 @@ export class Game {
       if (humans.length === 1 && ROLES[o.role] && o.role !== 'water' && o.role !== 'fire') this.players[0].role = o.role;
       give(FIRE_SPECIALS.filter(r => r !== this.players[0].role), 'fire'); give(WATER_SPECIALS.filter(r => r !== this.players[0].role), 'water');
     }
-    for (const p of this.players) { p.frozen = 0; p.tracks = []; if (p.role === 'ice') p.uses = ROLES.ice.uses; if (p.role === 'underwater') p.uses = ROLES.underwater.uses; }
+    for (const p of this.players) { p.frozen = 0; p.tracks = []; if (p.role === 'ice') p.uses = ROLES.ice.uses; if (p.role === 'underwater') p.uses = ROLES.underwater.uses; if (p.role === 'eruption') { p.charges = ROLES.eruption.start; p.chargeT = 0; } }
+    this.meteors = [];
     // tasks: everyone gets a list (imposters get a fake one)
     for (const p of this.players) {
       const pool = M.tasks.map(t => t.id).sort(() => R() - 0.5);
@@ -181,6 +182,7 @@ export class Game {
     if (p.frozen > 0) return null;
     if (p.role === 'rain') return this.sab && p.abilCd <= 0 ? { kind: 'rain' } : null;
     if (p.role === 'ext') { const b = this.reviveTarget(p); return b ? { kind: 'revive', body: b } : null; }
+    if (p.role === 'eruption') return p.charges > 0 && p.abilCd <= 0 && p.inVent < 0 ? { kind: 'meteor' } : null;
     if (p.role === 'underwater') return p.uses > 0 && p.abilCd <= 0 && !this.flood ? { kind: 'flood' } : null;
     if (p.role === 'unicorn') return p.sky ? { kind: 'land' } : p.abilCd <= 0 && p.inVent < 0 ? { kind: 'rainbow' } : null;
     if (p.role === 'bubble') { if (p.tracks.length >= ROLES.bubble.uses) return null; const q = this.bubbleTarget(p); return q ? { kind: 'bubble', q } : null; }
@@ -206,6 +208,15 @@ export class Game {
     if (!(q.frozen > 0) || q.iceT < ROLES.ice.minT) return;
     q.breaks++;
     if (q.breaks >= ROLES.ice.breaks) { q.frozen = 0; this.emit({ type: 'thaw', p: q.id }); }
+  }
+  // Eruption: an asteroid on someone's spot. 2 s warning circle, then anyone Water still inside burns
+  meteor(p, targetId) {
+    const q = this.players[targetId];
+    if (p.role !== 'eruption' || !p.alive || p.charges <= 0 || p.abilCd > 0 || !q || !q.alive || q.imp || this.state !== 'play') return;
+    p.charges--; p.abilCd = ROLES.eruption.cd;
+    const m = { by: p.id, target: q.id, x: q.x, z: q.z, t: ROLES.eruption.warn, id: (this.meteorN = (this.meteorN || 0) + 1) };
+    this.meteors.push(m);
+    this.emit({ type: 'meteorWarn', p: p.id, target: q.id, x: m.x, z: m.z, id: m.id, charges: p.charges });
   }
   // Underwater: the whole map floods for 15 s and nobody can be killed
   floodMap(p) {
@@ -273,16 +284,16 @@ export class Game {
     this.emit({ type: 'task', p: p.id });
     this.checkWin();
   }
-  kill(k, v) {
+  kill(k, v, opt = {}) {
     if (!v.alive || this.state !== 'play' || this.flood) return;
     const fromSky = !!v.sky;
     v.alive = false; v.deadT = this.time; v.holding = -1; if (v.spirit) { v.spirit = null; } v.sky = null;
-    const style = k.role === 'sponge' ? 'sponge' : k.role === 'bucket' ? 'bucket' : 'fire';
+    const style = opt.remote ? 'fire' : k.role === 'sponge' ? 'sponge' : k.role === 'bucket' ? 'bucket' : 'fire';
     if (style === 'fire') this.bodies.push({ pid: v.id, x: v.x, z: v.z, t: this.time, room: roomName(this.map, v.x, v.z), style, killer: k.id });
     if (style === 'bucket') k.carry = v.id;
-    if (style === 'fire') { k.x = v.x; k.z = v.z; k.tp = (k.tp || 0) + 1; }
-    k.killCd = this.o.killCd;
-    this.emit({ type: 'kill', killer: k.id, victim: v.id, x: v.x, z: v.z, style, kx: k.x, kz: k.z, sky: fromSky });
+    if (style === 'fire' && !opt.remote) { k.x = v.x; k.z = v.z; k.tp = (k.tp || 0) + 1; }
+    if (!opt.remote) k.killCd = this.o.killCd;
+    this.emit({ type: 'kill', killer: k.id, victim: v.id, x: v.x, z: v.z, style, kx: k.x, kz: k.z, sky: fromSky, meteor: !!opt.remote });
     // Bubble trackers: whoever has a bubble on the killer gets an alert
     for (const w of this.players) {
       if (w.role !== 'bubble' || !w.alive || w === k || !w.tracks.includes(k.id)) continue;
@@ -292,6 +303,7 @@ export class Game {
     // witnesses
     for (const w of this.players) {
       if (!w.alive || w === k || !w.ai || w.imp) continue;
+      if (opt.remote) { if (this.canSee(w, v.x, v.z)) { w.ai.mode = 'report'; w.ai.goal = { x: v.x, z: v.z }; w.ai.path = null; } continue; }
       if (w.spirit || w.sky || this.canSee(w, k.x, k.z)) {
         w.ai.claims.push({ kind: 'kill', who: k.id, victim: v.id, room: roomName(this.map, k.x, k.z), t: this.time });
         w.ai.sus[k.id] = 100;
@@ -350,7 +362,7 @@ export class Game {
   // called by the meeting screen when votes are in
   endMeeting(ejectId) {
     if (ejectId >= 0) { const p = this.players[ejectId]; p.alive = false; p.ejected = true; p.deadT = this.time; p.carry = -1; }
-    this.flood = null;
+    this.flood = null; this.meteors = [];
     for (const p of this.players) { p.carry = -1; p.frozen = 0; if (p.spirit) { p.spirit = null; p.abilCd = ROLES.evap.cd; } if (p.sky) { p.sky = null; p.abilCd = ROLES.unicorn.cd; } }      // a meeting empties every bucket and thaws everyone
     this.bodies = []; this.sab = null; this.sabCd = 15; this.buttonCd = 15;
     for (const p of this.players) { p.killCd = this.o.killCd; p.voted = null; if (p.ai) { p.ai.claims = p.ai.claims.filter(c => this.time - c.t < 1); p.ai.with.fill(0); } }
@@ -372,10 +384,18 @@ export class Game {
   update(dt) {
     if (this.state !== 'play') return;
     this.time += dt; this.buttonCd -= dt;
+    for (const m of this.meteors) {
+      m.t -= dt; if (m.t > 0) continue;
+      const k = this.players[m.by], R = ROLES.eruption.radius;
+      this.emit({ type: 'meteorHit', x: m.x, z: m.z, fizzle: !!this.flood });
+      if (!this.flood && k) for (const v of this.players) if (v.alive && !v.imp && v.inVent < 0 && !v.sky && Math.hypot(v.x - m.x, v.z - m.z) < R) this.kill(k, v, { remote: true });
+    }
+    this.meteors = this.meteors.filter(m => m.t > 0);
     if (this.flood) { this.flood.t -= dt; if (this.flood.t <= 0) { this.flood = null; this.emit({ type: 'drain' }); } } if (!this.sab) this.sabCd -= dt;
     for (const p of this.players) { if (p.alive) { p.killCd = Math.max(0, p.killCd - dt); p.abilCd = Math.max(0, p.abilCd - dt); }
       if (p.spirit) { p.spirit.t -= dt; if (p.spirit.t <= 0 || !p.alive) this.condense(p); }
       if (p.sky) { p.sky.t -= dt; if (p.sky.t <= 0) this.land(p); }
+      if (p.role === 'eruption' && p.charges < ROLES.eruption.max) { p.chargeT += dt; if (p.chargeT >= ROLES.eruption.recharge) { p.chargeT = 0; p.charges++; } }
       if (p.frozen > 0) {
         p.iceT += dt;
         if (p.ai && p.iceT >= ROLES.ice.minT && this.R() < dt * p.breakSpeed) this.breakIce(p);     // computer puddles spam their way out
@@ -402,6 +422,17 @@ export class Game {
       if (d < 0.3) { A.mode = 'doing'; A.task = next; A.wait = TASK_TIME[t.type]; p.vx = p.vz = 0; return; }
       const s = Math.min(d, SPEED * 0.8 * dt); p.vx = dx / d * SPEED * 0.8; p.vz = dz / d * SPEED * 0.8;
       this.move(p, dx / d * s, dz / d * s, true); p.face = Math.atan2(dx, dz); return;
+    }
+    if (!p.imp && this.meteors.length && !(p.frozen > 0) && !p.spirit && !p.sky) for (const m of this.meteors) {
+      if (Math.hypot(p.x - m.x, p.z - m.z) > ROLES.eruption.radius + 0.4) continue;
+      A.dodge ||= {}; if (A.dodge[m.id] == null) A.dodge[m.id] = this.R() < 0.45 + 0.2 * this.o.smarts;      // do they notice in time?
+      if (A.dodge[m.id] && A.mode !== 'dodge') { const a = Math.atan2(p.z - m.z, p.x - m.x) + (this.R() - 0.5); const c = this.nearFree(Math.floor(m.x + Math.cos(a) * 3.6), Math.floor(m.z + Math.sin(a) * 3.6)) || [Math.floor(p.x), Math.floor(p.z)]; A.mode = 'dodge'; A.goal = { x: c[0] + 0.5, z: c[1] + 0.5 }; A.path = null; p.holding = -1; }
+    }
+    if (A.mode === 'dodge' && !(p.frozen > 0)) { if (this.walk(p, dt, 1.15)) { A.mode = 'idle'; A.wait = 0.5; } return; }
+    if (p.role === 'eruption' && p.charges > 0 && p.abilCd <= 0 && this.R() < dt * (0.04 + 0.03 * this.o.smarts)) {
+      const prey = this.players.filter(q => q.alive && !q.imp && q.inVent < 0 && !q.sky);
+      const alone = prey.filter(q => !this.players.some(w => w !== q && w.alive && !w.imp && Math.hypot(w.x - q.x, w.z - q.z) < 6));
+      const pickFrom = alone.length ? alone : prey; if (pickFrom.length) this.meteor(p, pickFrom[Math.floor(this.R() * pickFrom.length)].id);
     }
     if (p.sky) { p.vx = p.vz = 0; const c = p.ai.claims.find(c => (c.kind === 'kill' || c.kind === 'vent') && this.time - c.t < 0.5); if (c && p.sky.t < 12) this.land(p); return; }
     if (p.role === 'unicorn' && p.abilCd <= 0 && !this.sab && (A.mode === 'idle' || A.mode === 'doing') && this.R() < dt * 0.08) { this.rainbow(p); return; }

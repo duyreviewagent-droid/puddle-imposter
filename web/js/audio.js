@@ -180,6 +180,12 @@ export const sfx = {
     osc('sine', 70, 35, t + 0.4, 1.2, 0.5, o, 0.2);
   },
   drain() { if (!ok()) return; const t = ctx.currentTime, o = out(0.45, 0, 0.4); noise(t, 1.8, 0.7, o, { type: 'bandpass', f0: 1400, f1: 200, q: 1.5, a: 0.1 }); osc('sine', 300, 60, t + 0.8, 0.8, 0.4, o); for (let i = 0; i < 6; i++) this.drip(0.6); },
+  meteorWarn() { if (!ok()) return; const t = ctx.currentTime, o = out(0.4, 0, 0.4); const s = osc('sine', 2400, 500, t, 2.0, 0.35, o, 0.3); noise(t, 2.0, 0.4, o, { type: 'bandpass', f0: 600, f1: 2500, q: 1, a: 0.6 }); },
+  boom() {
+    if (!ok()) return; const t = ctx.currentTime, o = out(0.9, 0, 0.6);
+    osc('sine', 120, 28, t, 1.2, 1, o, 0.003); noise(t, 1.6, 1, o, { type: 'lowpass', f0: 2500, f1: 120, a: 0.003, buf: brownBuf });
+    noise(t, 0.3, 0.8, o, { type: 'highpass', f0: 1500 }); for (let i = 0; i < 30; i++) noise(t + R(0.1, 1.4), 0.03, R(0.2, 0.6), o, { type: 'bandpass', f0: R(800, 4000), q: 2 });
+  },
   revive() { if (!ok()) return; const t = ctx.currentTime, o = out(0.4, 0, 0.5); noise(t, 1.2, 0.8, o, { type: 'highpass', f0: 2500, a: 0.02 }); [523, 659, 784, 1046, 1318].forEach((f, i) => osc('triangle', f, f, t + 0.4 + i * 0.08, 0.6, 0.3, o)); },
   crewReveal() { if (!ok()) return; const t = ctx.currentTime, o = out(0.4, 0, 0.5); for (const f of [262, 330, 392, 523]) osc('triangle', f, f, t, 2.2, 0.18, o, 0.25); },
 };

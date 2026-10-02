@@ -11,8 +11,9 @@ export const ROLES = {
   fire: { team: 'fire', name: 'Fire', emoji: '🔥', color: '#ff5a1a', goal: 'Set the Water on fire until Fire equals Water. Don\'t get caught.' },
   sponge: { team: 'fire', name: 'Sponge', emoji: '🧽', color: '#ffd23a', goal: 'Fire that soaks puddles up completely — your kills leave no body behind.' },
   ice: { team: 'fire', name: 'Ice', emoji: '🧊', color: '#9ae8ff', goal: 'Fire that can freeze ALL the Water solid — 3 times per game, 30 second reload. Frozen puddles are stuck for at least 2 seconds, then have to spam the screen 12 times to break out.', ability: 'Freeze', key: 'F', cd: 30, uses: 3, minT: 2, breaks: 12 },
+  eruption: { team: 'fire', name: 'Eruption', emoji: '🌋', color: '#ff6a1a', goal: 'Fire that calls down asteroids on any Water puddle on the map. A red circle warns them for 2 seconds — if they don\'t run, they burn. Start with 2, earn one every 45 s, stack up to 3.', ability: 'Asteroid', key: 'F', cd: 8, start: 2, max: 3, recharge: 45, warn: 2, radius: 1.7 },
   bucket: { team: 'fire', name: 'Bucket', emoji: '🪣', color: '#c0c8d0', goal: 'Fire that scoops puddles into a bucket. Dump them in one of the 4 big buckets so nobody can ever report them.', ability: 'Dump', key: 'F' },
 };
-export const FIRE_SPECIALS = ['sponge', 'bucket', 'ice'], WATER_SPECIALS = ['toilet', 'rain', 'ext', 'evap', 'unicorn', 'bubble', 'underwater'];
+export const FIRE_SPECIALS = ['sponge', 'bucket', 'ice', 'eruption'], WATER_SPECIALS = ['toilet', 'rain', 'ext', 'evap', 'unicorn', 'bubble', 'underwater'];
 export const isFire = r => ROLES[r] && ROLES[r].team === 'fire';
 export const roleName = r => (ROLES[r] || ROLES.water).name;
