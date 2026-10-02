@@ -76,7 +76,7 @@ const lava = new LavaPit();
 lava.scene.environment = env; lava.scene.environmentIntensity = 0.25;
 
 // ------------------------------------------------------------------ settings + stats
-const DEF = { mapId: -1, role: 'random', imps: 2, count: 10, killCd: 25, smarts: 1, tasksPer: 6, special: 1, color: 1, name: '', cos: { hat: 'none', shirt: 'none', pet: 'none' } };
+const DEF = { mapId: -1, role: 'random', imps: 2, count: 10, killCd: 25, smarts: 1, tasksPer: 6, special: 1, mode: 'classic', color: 1, name: '', cos: { hat: 'none', shirt: 'none', pet: 'none' } };
 const settings = { ...DEF, ...LS.get('pi.settings', {}) };
 settings.cos = cleanCos(settings.cos);
 if (settings.role === 'crew') settings.role = 'water'; if (settings.role === 'imp') settings.role = 'fire'; if (!ROLES[settings.role]) settings.role = 'random';
@@ -114,9 +114,12 @@ function buildTitle() {
     const k = seg.dataset.k;
     for (const b of seg.children) {
       b.classList.toggle('on', String(settings[k]) === b.dataset.v);
-      b.onclick = () => { settings[k] = k === 'role' ? b.dataset.v : +b.dataset.v; if (k === 'count' || k === 'imps') settings.imps = Math.min(settings.imps, maxImps(settings.count)); sfx.blip(); buildTitle(); save(); };
+      b.onclick = () => { settings[k] = k === 'role' || k === 'mode' ? b.dataset.v : +b.dataset.v; if (k === 'count' || k === 'imps') settings.imps = Math.min(settings.imps, maxImps(settings.count)); sfx.blip(); buildTitle(); save(); };
     }
   }
+  { const sel = $('o-rolesel'); for (const o of [...sel.options]) if (o.dataset.extra) o.remove();
+    if (settings.mode === 'random') for (const [id, r] of Object.entries(ROLES)) if (r.extra) { const o = new Option(`${r.emoji} ${r.name} (${r.team === 'fire' ? 'Fire' : 'Water'})`, id); o.dataset.extra = 1; sel.add(o); }
+    if (ROLES[settings.role] && ROLES[settings.role].extra && settings.mode !== 'random') settings.role = 'random'; }
   $('o-rolesel').value = settings.role; $('o-rolesel').onchange = e => { settings.role = e.target.value; sfx.blip(); save(); };
   for (const b of $('o-imps').children) b.style.opacity = +b.dataset.v > maxImps(settings.count) ? 0.3 : 1;
   $('nm').value = settings.name;
@@ -166,7 +169,7 @@ function startGame() {
   me = 0;
   const mapId = Q.has('map') ? +Q.get('map') : settings.mapId >= 0 ? settings.mapId : Math.floor(Math.random() * MAPS.length);
   const role = Q.get('role') || settings.role;
-  game = new Game({ mapId, role, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer, special: settings.special !== 0, color: settings.color, cos: settings.cos, name: settings.name || COLORS[settings.color].name });
+  game = new Game({ mapId, role, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer, special: settings.special !== 0, mode: Q.get('mode') || settings.mode, color: settings.color, cos: settings.cos, name: settings.name || COLORS[settings.color].name });
   setupGame();
 }
 function setupGame() {
@@ -262,7 +265,7 @@ function doUse() {
 function doReport() { const h = H(), b = game.bodyNear(h); if (b) { if (NET) nsend({ t: 'act', a: 'report' }); else game.callMeeting(h, b); } }
 function doKill() { const h = H(), t = game.killTarget(h); if (t) { if (NET) nsend({ t: 'act', a: 'kill' }); else game.kill(h, t); } }
 function doVent() {
-  const h = H(); if (!h.imp || !h.alive) return;
+  const h = H(); if ((!h.imp && h.role !== 'mechanic') || !h.alive) return;
   if (h.inVent >= 0) { if (NET) nsend({ t: 'act', a: 'vent', op: 'out' }); else game.ventOut(h); return; }
   const v = game.ventNear(h); if (v >= 0) { h.ventSel = 0; if (NET) nsend({ t: 'act', a: 'vent', op: 'in' }); else game.ventIn(h, v); }
 }
@@ -308,6 +311,8 @@ function drawMap(c, big) {
   if (h.role === 'bubble') for (const id of h.tracks || []) { const q = game.players[id]; if (!q.alive) continue; const [bx, by] = P(q.x, q.z); g.fillStyle = q.color; g.beginPath(); g.arc(bx, by, big ? 9 : 13, 0, 7); g.fill(); g.strokeStyle = '#bfe8ff'; g.lineWidth = 3; g.beginPath(); g.arc(bx, by, (big ? 14 : 19) + Math.sin(performance.now() / 200) * 2, 0, 7); g.stroke(); }
   if (bubblePing && bubblePing.t > 0) { const [bx, by] = P(bubblePing.x, bubblePing.z); g.strokeStyle = '#ff3a2a'; g.lineWidth = 4; g.beginPath(); g.arc(bx, by, 10 + (3 - bubblePing.t) * 20 % 30, 0, 7); g.stroke(); }
   if (h.sky) for (const q of game.players) { if (!q.alive || q.id === me) continue; const [bx, by] = P(q.x, q.z); g.fillStyle = q.color; g.beginPath(); g.arc(bx, by, big ? 7 : 10, 0, 7); g.fill(); }
+  if (h.alive && (h.role === 'radar' || (h.role === 'hacker') || (h.snitchOn))) for (const q of game.players) { if (!q.alive || q.id === me) continue; if (h.role === 'hacker' && q.imp) continue; if (h.snitchOn && !q.imp) continue; const [bx, by] = P(q.x, q.z); g.fillStyle = h.role === 'radar' ? '#cfd8e0' : h.snitchOn ? '#ff3a2a' : q.color; g.beginPath(); g.arc(bx, by, big ? 7 : 10, 0, 7); g.fill(); }
+  if (h.imp && game.traps) for (const tr of game.traps) { const [bx, by] = P(tr.x, tr.z); g.font = `${big ? 18 : 24}px sans-serif`; g.textAlign = 'center'; g.fillStyle = '#000'; g.fillText('🪤', bx, by + 6); }
   if (h.role === 'bucket') for (const d of game.map.dumps) { const [bx, by] = P(d.x, d.z); g.font = `${big ? 22 : 30}px sans-serif`; g.textAlign = 'center'; g.fillStyle = '#000'; g.fillText('🪣', bx, by + 8); }
   const [x, y] = P(h.x, h.z);
   g.fillStyle = h.color; g.shadowColor = h.color; g.shadowBlur = 14; g.beginPath(); g.arc(x, y, big ? 10 : 16, 0, 7); g.fill(); g.shadowBlur = 0;
@@ -386,6 +391,23 @@ function handleEvents() {
       if (!NET) { /* solo: meteors are read straight from the game */ }
     }
     else if (e.type === 'meteorHit') { world.impact(e.x, e.z, e.fizzle); const d = Math.hypot(e.x - h.x, e.z - h.z); if (d < 30) { sfx.boom(); shake = Math.max(shake, 1.2 * (1 - d / 30)); } }
+    else if (e.type === 'shieldGive') { sfx.revive(); flashBanner(`💉 YOU SHIELDED ${game.players[e.q].name.toUpperCase()}`, 2); }
+    else if (e.type === 'shieldPop') { world.burst(e.x, 0.8, e.z, 30, 2.5); world.swirl(e.x, e.z); if (humanSees(e.x, e.z) || e.v === me) sfx.zap(); if (e.v === me) flashBanner(`🛡️ YOUR SHIELD SAVED YOU<small>${game.players[e.by].name} just tried to burn you!</small>`, 3.5); }
+    else if (e.type === 'guard') { if (e.p === me) flashBanner(`🛡️ YOU TOOK THE HIT FOR ${game.players[e.q].name.toUpperCase()}`, 3); }
+    else if (e.type === 'inspect') { sfx.blip(1500); flashBanner(e.killed ? `🔎 ${game.players[e.q].name.toUpperCase()} HAS KILLED!<small>since the last meeting</small>` : `🔎 ${game.players[e.q].name} has NOT killed<small>since the last meeting</small>`, 3.5); }
+    else if (e.type === 'shot') { const v = game.players[e.misfire ? e.p : e.q]; v.alive = false; models[v.id].setGhost(true); world.burst(v.x, 0.8, v.z, 30, 3); world.wetSpot(v.x, v.z, 2, 99999); const b = new Puddle(v.color, '', world); b.dead = 1; b.setCos(v.cos); b.group.position.set(v.x, 0, v.z); world.scene.add(b.group); bodyModels.set(v.id, b); if (humanSees(v.x, v.z) || e.p === me || e.q === me) { sfx.boom(); } flashBanner(e.misfire ? `🤠 THE SHERIFF MISSED<small>${game.players[e.p].name} shot Water and died</small>` : `🤠 THE SHERIFF SHOT ${game.players[e.q].name.toUpperCase()}`, 3); buildTaskList(); }
+    else if (e.type === 'sense') { sfx.revive(); flashBanner(`🔮 A FIRE IS IN ${e.room.toUpperCase()}`, 3.5); }
+    else if (e.type === 'blast') { world.burst(e.x, 1, e.z, 60, 6); for (let i = 0; i < 6; i++) world.splash(e.x, e.z, 4.5 - i * 0.5); if (Math.hypot(e.x - h.x, e.z - h.z) < 20) sfx.splash(2.5, 1); }
+    else if (e.type === 'vanish') { world.steamFx(e.x, e.z, 1.2); if (e.p === me) flashBanner('🌑 YOU ARE INVISIBLE<small>8 seconds — nobody can see you</small>', 2); }
+    else if (e.type === 'disguise') { if (e.p === me) flashBanner(`🎭 YOU LOOK LIKE ${game.players[e.as].name.toUpperCase()}<small>15 seconds — witnesses will blame them</small>`, 2.5); }
+    else if (e.type === 'smoke') { for (let i = 0; i < 40; i++) setTimeout(() => world.puffSmoke(e.x + (Math.random() - 0.5) * 9, e.z + (Math.random() - 0.5) * 9, false), i * 40); if (Math.hypot(e.x - h.x, e.z - h.z) < 20) sfx.whoosh(); if (h.blind > 0 || (!h.imp && Math.hypot(e.x - h.x, e.z - h.z) < 7)) flashBanner('💨 SMOKE BOMB<small>you can barely see!</small>', 2); }
+    else if (e.type === 'trapSet') { if (e.p === me) { sfx.blip(500); flashBanner('🪤 TRAP SET', 1.2); } }
+    else if (e.type === 'trapHit') { if (h.imp) flashBanner(`🪤 YOUR TRAP GOT ${game.players[e.v].name.toUpperCase()}`, 2); }
+    else if (e.type === 'mute') { flashBanner(`🤐 ${game.players[e.q].name.toUpperCase()} WON'T TALK NEXT MEETING`, 2); }
+    else if (e.type === 'phase') { if (e.p === me) flashBanner('🫥 PHASING<small>walk through walls for 6 seconds</small>', 2); }
+    else if (e.type === 'alarm') { sfx.heatAlarm(); flashBanner(`🚨 SOMEONE WAS JUST KILLED NEARBY<small>in ${e.room}</small>`, 3); bubblePing = { x: e.x, z: e.z, t: 3 }; }
+    else if (e.type === 'spirits') { flashBanner(`👻 THE SPIRITS SAY: ${game.players[e.q].name.toUpperCase()} IS WATER`, 4); }
+    else if (e.type === 'snitch') { if (e.p === me) flashBanner('📢 ALL TASKS DONE — every Fire is on your map now', 3); else if (h.imp) { sfx.heatAlarm(); flashBanner('📢 A SNITCH FINISHED THEIR TASKS<small>they can see where you are</small>', 3); } }
     else if (e.type === 'task') buildTaskList();
     else if (e.type === 'win') { endT = e.heat ? 2.5 : 2.2; if (e.heat) { $('flash').style.background = '#ff7a10'; $('flash').style.transition = 'opacity 2s'; $('flash').style.opacity = 0.8; } }
   }
@@ -406,7 +428,9 @@ function startMeeting() {
   $('m-title').textContent = 'WHO IS FIRE?';
   $('m-sub').textContent = M.body >= 0 ? `${by.name} reported ${game.players[M.body].name}'s body in ${M.room}` : `${by.name} called an emergency meeting`;
   $('m-skip').classList.remove('sel'); $('m-skipvotes').innerHTML = '';
-  $('m-hint').textContent = h.alive ? 'Click a puddle to accuse or vouch for them' : 'Ghosts can watch, but nobody can hear you';
+  const muted = game.muted === me && h.alive;
+  $('m-hint').textContent = muted ? '🤐 You were silenced — you can vote but you can\'t talk this meeting' : h.alive ? 'Click a puddle to accuse or vouch for them' : 'Ghosts can watch, but nobody can hear you';
+  if (muted) { document.querySelector('.mquick').style.display = 'none'; document.querySelector('.mchat .mtype').style.display = 'none'; }
   document.querySelector('.mquick').style.display = h.alive ? '' : 'none'; document.querySelector('.mchat .mtype').style.display = h.alive ? '' : 'none'; $('m-input').value = '';
   $('m-skip').style.display = h.alive ? '' : 'none';
   buildCards();
@@ -454,6 +478,7 @@ function chat(pid, text) {
   sfx.blip(p.id === me ? 1300 : 900 + pid * 40, 0.6);
 }
 function say(kind, target) {
+  if (game.muted === me) return;
   if (NET) { nsend({ t: 'say', kind, target }); return; }
   chat(me, sayText(game, me, kind, target));
   const replies = humanSays(game, kind, target, me);
@@ -600,7 +625,8 @@ function playUpdate(dt) {
     if (keys.has('KeyD') || keys.has('ArrowRight')) mx += 1;
   }
   if (killedFx && killedFx.t < 1.8) { mx = mz = 0; }
-  if (h.frozen > 0) { mx = mz = 0; }
+  if (h.frozen > 0 || h.stun > 0) { mx = mz = 0; }
+  if (h.stun > 0) { $('banner').innerHTML = `💦 STUNNED<small>${Math.ceil(h.stun)}s</small>`; $('banner').classList.remove('hidden'); bannerT = 0.2; }
   if (h.sky) { mx = mz = 0; $('banner').innerHTML = `🦄 ON THE RAINBOW — ${Math.max(0, Math.ceil(h.sky.t))}s<small>you can see everyone · F to slide down · if Fire burns the bottom, you fall!</small>`; $('banner').classList.remove('hidden'); bannerT = 0.2; }
   iceOverlay(dt);
   if (h.spirit && spirit) {
@@ -611,10 +637,10 @@ function playUpdate(dt) {
   } else if (!h.spirit && spirit) spirit = null;
   const len = Math.hypot(mx, mz);
   if (len) {
-    const sp = SPEED * (h.alive ? (h.carry >= 0 ? 0.72 : 1) : 1.3);
+    const sp = SPEED * (h.alive ? (h.carry >= 0 ? 0.72 : 1) * (h.role === 'speedy' ? 1.3 : 1) : 1.3);
     mx /= len; mz /= len;
     const ox = h.x, oz = h.z;
-    game.move(h, mx * sp * dt, mz * sp * dt, !h.alive);
+    game.move(h, mx * sp * dt, mz * sp * dt, !h.alive || h.phase > 0);
     h.vx = (h.x - ox) / dt; h.vz = (h.z - oz) / dt; h.face = Math.atan2(mx, mz);
     if (h.alive) { stepAcc += Math.hypot(h.x - ox, h.z - oz); if (stepAcc > 0.9) { stepAcc = 0; sfx.step(0.9); } }
   } else { h.vx = h.vz = 0; }
@@ -630,7 +656,8 @@ function playUpdate(dt) {
   $('a-report').classList.toggle('on', !!body);
   $('a-report').classList.toggle('hidden', !h.alive);
   $('a-kill').classList.toggle('hidden', !h.imp || !h.alive);
-  $('a-vent').classList.toggle('hidden', !h.imp || !h.alive);
+  $('a-vent').classList.toggle('hidden', (!h.imp && h.role !== 'mechanic') || !h.alive);
+  if (h.role === 'mechanic') $('a-vent').classList.toggle('on', vn >= 0 || h.inVent >= 0);
   $('a-sab').classList.toggle('hidden', !h.imp);
   if (h.imp) {
     $('a-kill').classList.toggle('on', !!kt);
@@ -677,11 +704,15 @@ function drawWorld(dt, aspect) {
   game.players.forEach((p, i) => {
     const pd = models[i];
     let vis;
-    if (p.alive) vis = p.inVent < 0 && (p.id === me || humanSees(p.x, p.z));
+    if (p.alive) vis = p.inVent < 0 && (p.id === me || humanSees(p.x, p.z)) && !(p.invis > 0 && p.id !== me && !(h.imp && p.imp));
     else vis = !h.alive && !p.ejected;
     pd.group.visible = vis;
     pd.melt = heat ? 1.2 : 0;
     pd.setFrozen(p.alive && p.frozen > 0);
+    // Morph: everyone else sees the disguise
+    const fake = p.disguise && p.alive && p.id !== me && !(h.imp && p.imp) ? game.players[p.disguise.id] : null;
+    if (fake) { if (!pd.fake || pd.fakeId !== fake.id) { if (pd.fake) world.scene.remove(pd.fake.group); pd.fake = new Puddle(fake.color, fake.name, world); pd.fake.setCos(fake.cos); pd.fakeId = fake.id; world.scene.add(pd.fake.group); } }
+    if (pd.fake) { pd.fake.group.visible = !!fake && vis; if (fake && vis) { pd.fake.group.position.set(p.x, 0, p.z); pd.fake.update(dt, t, p.vx, p.vz, p.face); vis = false; pd.group.visible = false; } }
     pd.group.position.set(p.x, p.alive ? 0 : 0.35 + Math.sin(t * 2 + i) * 0.12, p.z);
     if (vis) pd.update(dt, t, p.vx, p.vz, p.face);
     const rb = world.rainbowAt(p.id, p.x, p.z, !!(p.sky && p.alive));
@@ -758,7 +789,11 @@ function drawDark() {
 function doAbility() {
   const h = H(); if (S !== 'play' || !h.alive) return;
   const a = game.ability(h);
-  if (!a) { if (['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap', 'unicorn', 'bubble', 'underwater', 'eruption'].includes(h.role)) sfx.bad(); return; }
+  if (!a) { sfx.bad(); return; }
+  if (a.kind === 'use') {
+    if (h.role === 'silencer') { openPicker('🤐 WHO CAN\'T TALK NEXT MEETING?', game.players.filter(q => q.alive && q.id !== me), q => NET ? nsend({ t: 'act', a: 'ability', op: 'use', arg: q.id }) : game.useAbility(H(), q.id)); return; }
+    if (NET) nsend({ t: 'act', a: 'ability', op: 'use' }); else game.useAbility(h); return;
+  }
   if (a.kind === 'meteor') { openMeteor(); return; }
   if (a.kind === 'flood') { if (NET) nsend({ t: 'act', a: 'ability', op: 'flood' }); else game.floodMap(h); return; }
   if (a.kind === 'rainbow') { if (NET) { h.sky = { t: ROLES.unicorn.dur }; nsend({ t: 'act', a: 'ability', op: 'rainbow' }); } else game.rainbow(h); return; }
@@ -773,7 +808,14 @@ function doAbility() {
   else if (a.kind === 'flush') openFlush(a.i);
 }
 
+function openPicker(title, people, cb) {
+  $('meteorpick').querySelector('h2').textContent = title;
+  const list = $('meteor-list'); list.innerHTML = '';
+  for (const q of people) { const b = document.createElement('button'); b.append(cardIcon(q, false, 36)); b.append(document.createTextNode(q.name)); b.onclick = () => { $('meteorpick').classList.add('hidden'); cb(q); }; list.append(b); }
+  $('meteorpick').classList.remove('hidden'); sfx.blip(700);
+}
 function openMeteor() {
+  $('meteorpick').querySelector('h2').textContent = '🌋 DROP AN ASTEROID ON…';
   const list = $('meteor-list'); list.innerHTML = '';
   for (const q of game.players) {
     if (!q.alive || q.imp || q.id === me) continue;
@@ -796,15 +838,16 @@ function openFlush(from) {
 }
 $('flush-x').onclick = () => $('flushpick').classList.add('hidden');
 function abilityHud(h) {
-  const has = ['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap', 'unicorn', 'bubble', 'underwater', 'eruption'].includes(h.role) && h.alive;
+  const RX = ROLES[h.role];
+  const has = (['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap', 'unicorn', 'bubble', 'underwater', 'eruption'].includes(h.role) || (RX && RX.extra && RX.act)) && h.alive;
   $('a-abil').classList.toggle('hidden', !has);
   if (!has) return;
-  const I = { toilet: ['🚽', 'FLUSH'], rain: ['🌧️', 'RAIN'], ext: ['🧯', 'REVIVE'], bucket: ['🪣', 'DUMP'], ice: ['🧊', 'FREEZE'], evap: h.spirit ? ['💧', 'RETURN'] : ['☁️', 'VAPOR'], unicorn: h.sky ? ['⬇️', 'SLIDE DOWN'] : ['🦄', 'RAINBOW'], bubble: ['🫧', 'BUBBLE'], underwater: ['🌊', 'FLOOD'], eruption: ['🌋', 'ASTEROID'] }[h.role];
+  const I = { toilet: ['🚽', 'FLUSH'], rain: ['🌧️', 'RAIN'], ext: ['🧯', 'REVIVE'], bucket: ['🪣', 'DUMP'], ice: ['🧊', 'FREEZE'], evap: h.spirit ? ['💧', 'RETURN'] : ['☁️', 'VAPOR'], unicorn: h.sky ? ['⬇️', 'SLIDE DOWN'] : ['🦄', 'RAINBOW'], bubble: ['🫧', 'BUBBLE'], underwater: ['🌊', 'FLOOD'], eruption: ['🌋', 'ASTEROID'] }[h.role] || [RX.emoji, RX.ability.toUpperCase()];
   $('abil-ic').textContent = I[0]; $('abil-lab').textContent = I[1];
   $('a-abil').classList.toggle('on', !!game.ability(h));
   const cdMax = ROLES[h.role].cd || 1;
   const timed = h.role === 'toilet' || h.role === 'rain' || h.role === 'ice' || (h.role === 'evap' && !h.spirit) || (h.role === 'unicorn' && !h.sky) || h.role === 'underwater';
-  $('abil-cd').textContent = h.role === 'eruption' ? String(h.charges ?? 0) : h.role === 'underwater' && h.uses <= 0 ? '0' : h.role === 'bubble' ? String(3 - (h.tracks || []).length) : h.role === 'ice' && h.uses <= 0 ? '0' : timed && h.abilCd > 0 ? Math.ceil(h.abilCd) : h.role === 'ext' ? (h.uses > 0 ? '' : '0') : '';
+  $('abil-cd').textContent = RX.extra ? (RX.uses ? String(h.uses) : h.abilCd > 0 ? Math.ceil(h.abilCd) : '') : h.role === 'eruption' ? String(h.charges ?? 0) : h.role === 'underwater' && h.uses <= 0 ? '0' : h.role === 'bubble' ? String(3 - (h.tracks || []).length) : h.role === 'ice' && h.uses <= 0 ? '0' : timed && h.abilCd > 0 ? Math.ceil(h.abilCd) : h.role === 'ext' ? (h.uses > 0 ? '' : '0') : '';
   $('a-abil').style.setProperty('--cd', timed ? Math.max(0, h.abilCd / cdMax) : 0);
   const K = { sponge: ['🧽', 'SOAK'], bucket: ['🪣', 'SCOOP'] }[h.role] || ['🔥', 'BURN'];
   $('kill-ic').textContent = K[0]; $('kill-lab').textContent = K[1];
@@ -858,6 +901,8 @@ function roleCard() {
     if (h.role === 'toilet') return `<div class="ab"><span>🚽 Flush from any vent [F]</span>${ready(h.abilCd)}</div>`;
     if (h.role === 'rain') return `<div class="ab"><span>🌧️ Rain away emergencies [F]</span>${game.sab ? ready(h.abilCd) : '<b class="cd">no emergency</b>'}</div>`;
     if (h.role === 'ext') return `<div class="ab"><span>🧯 Revive a burned body [F]</span><b class="${h.uses > 0 ? 'rd' : 'cd'}">${h.uses} left</b></div>`;
+    if (RI.extra) { const st = []; if (h.shield) st.push('🛡️ shielded'); if (h.snitchOn) st.push('📢 you can see Fire'); if (h.invis > 0) st.push(`🌑 invisible ${Math.ceil(h.invis)}s`); if (h.phase > 0) st.push(`🫥 phasing ${Math.ceil(h.phase)}s`); if (h.disguise) st.push(`🎭 disguised as ${game.players[h.disguise.id].name}`);
+      return (RI.act ? `<div class="ab"><span>${RI.emoji} ${RI.ability} [F]</span>${RI.uses && h.uses <= 0 ? '<b class="cd">used up</b>' : ready(h.abilCd)}</div>` + (RI.uses ? `<div class="ab"><span>Uses left</span><b class="rd">${h.uses}</b></div>` : '') : '<div class="ab"><span>Passive power</span><b class="rd">always on</b></div>') + (st.length ? `<div class="ab"><span>${st.join(' · ')}</span></div>` : ''); }
     if (h.role === 'eruption') return `<div class="ab"><span>🌋 Asteroid on anyone [F]</span>${(h.charges ?? 0) > 0 ? ready(h.abilCd) : '<b class="cd">recharging</b>'}</div><div class="ab"><span>Asteroids stacked</span><b class="rd">${h.charges ?? 0} / 3${(h.charges ?? 0) < 3 ? ' · next in ' + Math.ceil(45 - (h.chargeT || 0)) + 's' : ''}</b></div>`;
     if (h.role === 'underwater') return `<div class="ab"><span>🌊 Flood the map [F]</span>${game.flood ? `<b class="cd">flooded ${Math.ceil(game.flood.t)}s</b>` : h.uses > 0 ? ready(h.abilCd) : '<b class="cd">used up</b>'}</div><div class="ab"><span>Floods left</span><b class="rd">${h.uses} / 2</b></div>`;
     if (h.role === 'unicorn') return `<div class="ab"><span>🦄 Ride the rainbow / slide down [F]</span>${h.sky ? `<b class="cd">${Math.ceil(h.sky.t)}s in the sky</b>` : ready(h.abilCd)}</div>`;
@@ -997,7 +1042,7 @@ function lobbyUpdate(dt, aspect) {
 // ------------------------------------------------------------------ typing your own messages
 function sendTyped() {
   const inp = $('m-input'), text = inp.value.trim().slice(0, 120); inp.value = '';
-  if (!text || S !== 'meeting' || !H().alive || (MT && MT.revealT >= 0)) return;
+  if (!text || S !== 'meeting' || !H().alive || game.muted === me || (MT && MT.revealT >= 0)) return;
   if (NET) { nsend({ t: 'say', kind: 'text', text }); return; }
   chat(me, text);
   const { kind, target } = parseSay(game, me, text);
@@ -1075,7 +1120,7 @@ function drawLobby() {
     box.append(d);
   }
   const o = L.opts, n = L.players.length, fire = Math.max(1, Math.min(o.imps, Math.floor((n - 1) / 3) || 1));
-  $('lb-sum').textContent = `${o.mapId < 0 ? 'Random map' : MAPS[o.mapId].name} · ${n} real player${n > 1 ? 's' : ''} (no computer puddles) · ${fire} Fire · kill cooldown ${o.killCd}s`;
+  $('lb-sum').textContent = `${o.mapId < 0 ? 'Random map' : MAPS[o.mapId].name} · ${n} real player${n > 1 ? 's' : ''} (no computer puddles) · ${o.mode === 'random' ? '🎲 Random Roles' : 'Classic'} · ${fire} Fire · kill cooldown ${o.killCd}s`;
   $('lb-start').disabled = n < 3; $('lb-start').style.opacity = n < 3 ? 0.45 : 1;
   $('lb-start').innerHTML = n < 3 ? `▶ START GAME<small style="display:block;font-size:12px">need ${3 - n} more player${3 - n > 1 ? 's' : ''} — share the code</small>` : '▶ START GAME';
   $('lb-host').classList.toggle('hidden', !host);
@@ -1086,12 +1131,14 @@ function drawLobby() {
     const sel = $('lb-map'); if (!sel.options.length) { sel.add(new Option('Random map', -1)); MAPS.forEach(m => sel.add(new Option(m.name, m.id))); }
     sel.value = o.mapId;
     for (const b of $('lb-imps').children) b.classList.toggle('on', +b.dataset.v === o.imps);
+    for (const b of $('lb-mode').children) b.classList.toggle('on', b.dataset.v === (o.mode || 'classic'));
   }
 }
 let myNetId = 0;
 function lobbyOpts(patch) { nsend({ t: 'opts', opts: { ...lobbyState.opts, ...patch } }); }
 $('lb-map').onchange = e => lobbyOpts({ mapId: +e.target.value });
 for (const b of $('lb-imps').children) b.onclick = () => lobbyOpts({ imps: +b.dataset.v });
+for (const b of $('lb-mode').children) b.onclick = () => lobbyOpts({ mode: b.dataset.v });
 $('lb-start').onclick = () => { initAudio(); nsend({ t: 'start' }); };
 $('lb-leave').onclick = () => { leaveOnline(); showOnline(); };
 // copy that works everywhere: the Mac app's native clipboard, the browser clipboard, or the old select-and-copy trick
@@ -1104,7 +1151,7 @@ $('lb-copy').onclick = () => { copyText(inviteLink(lobbyState.code)); $('lb-copy
 $('lb-code').onclick = () => { copyText(lobbyState.code); $('lb-code').style.opacity = 0.5; setTimeout(() => $('lb-code').style.opacity = 1, 300); };
 $('b-online').onclick = () => { initAudio(); save(); showOnline(); };
 $('on-back').onclick = () => { leaveOnline(); toTitle(); };
-const lobbyCreateOpts = () => ({ special: settings.special, mapId: settings.mapId, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer });
+const lobbyCreateOpts = () => ({ mode: settings.mode, special: settings.special, mapId: settings.mapId, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer });
 $('on-create').onclick = () => connect(() => nsend({ t: 'create', pub: true, opts: lobbyCreateOpts() }));
 $('on-private').onclick = () => connect(() => nsend({ t: 'create', pub: false, opts: lobbyCreateOpts() }));
 $('on-join').onclick = () => { const c = $('on-code').value.trim().toUpperCase(); if (c.length === 4) connect(() => nsend({ t: 'join', code: c })); };
@@ -1161,7 +1208,8 @@ function startOnline(m) {
 function applySnap(m) {
   m.p.forEach((a, i) => {
     const p = game.players[i]; if (!p) return;
-    const [x, z, f, vx, vz, alive, inVent, tp, ej, hold, carry, frozen, breaks, sky] = a;
+    const [x, z, f, vx, vz, alive, inVent, tp, ej, hold, carry, frozen, breaks, sky, invis, dis] = a;
+    if (i !== me) { p.invis = invis ? 1 : 0; p.disguise = dis >= 0 ? { id: dis, t: 1 } : null; }
     if (i !== me) p.sky = sky ? { t: 1 } : null;
     p.alive = !!alive; p.inVent = inVent; p.ejected = !!ej; p.carry = carry ? 1 : -1;
     if (frozen && !p.frozen) { p.frozen = 1; p.iceT = 0; p.breaks = 0; } if (!frozen) p.frozen = 0; if (frozen && i === me) p.breaks = Math.max(p.breaks || 0, breaks || 0);
@@ -1175,12 +1223,14 @@ function applySnap(m) {
   if (!!wasSab !== !!game.sab) buildTaskList();
   game.sabCd = m.sabCd; game.buttonCd = m.bcd; game.flood = m.fl > 0 ? { t: m.fl } : null; game.meteors = (m.mt || []).map(([id, x, z, t]) => ({ id, x, z, t }));
   const tt = game._tt; if (tt.done !== m.done || tt.total !== m.total) { tt.done = m.done; tt.total = m.total; buildTaskList(); }
-  const h = H(); h.killCd = m.kc; h.meetings = m.ml; h.abilCd = m.ac ?? 0; h.uses = m.us ?? 0; h.charges = m.ch; h.chargeT = m.cht; if (m.sk > 0) h.sky = { t: m.sk }; else if (h.sky && h.sky.t < ROLES.unicorn.dur - 1) h.sky = null; if (m.tr) h.tracks = m.tr;
+  const h = H(); h.killCd = m.kc; h.meetings = m.ml; h.abilCd = m.ac ?? 0; h.uses = m.us ?? 0; h.charges = m.ch; h.chargeT = m.cht; h.stun = m.st || 0; h.blind = m.bl || 0; h.shield = !!m.sh; h.snitchOn = !!m.sn; h.phase = m.ph || 0; game.muted = m.mu ?? -1; if (m.trp) game.traps = m.trp.map(([id, x, z]) => ({ id, x, z })); if (m.sk > 0) h.sky = { t: m.sk }; else if (h.sky && h.sky.t < ROLES.unicorn.dur - 1) h.sky = null; if (m.tr) h.tracks = m.tr;
   if (m.sp > 0) h.spirit = { t: m.sp }; else if (h.spirit && m.sp === 0 && h.spirit.t < ROLES.evap.dur - 1) h.spirit = null;
 }
 function netEvent(e) {
   if (e.type === 'kill') { const v = game.players[e.victim]; v.alive = false; v.deadT = game.time; }
   if (e.type === 'revive') { const v = game.players[e.victim]; v.alive = true; }
+  if (e.type === 'disguise' && e.p === me) game.players[me].disguise = { id: e.as, t: 15 };
+  if (e.type === 'undisguise' && e.p === me) game.players[me].disguise = null;
   if (e.type === 'report' || e.type === 'emergency') { game.state = 'meeting'; game.meeting = e.meeting; for (const p of game.players) p.voted = null; }
   if (e.type === 'win') return;            // the 'win' message carries the roles
   game.events.push(e);

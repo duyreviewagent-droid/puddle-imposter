@@ -36,6 +36,8 @@ const OPT_KEYS = { mapId: [-1, 4], imps: [1, 3], count: [4, 12], killCd: [10, 60
 function cleanOpts(o = {}, base = {}) {
   const out = { mapId: -1, imps: 2, count: 10, killCd: 25, smarts: 1, tasksPer: 6, ...base };
   for (const [k, [a, b]] of Object.entries(OPT_KEYS)) if (Number.isFinite(+o[k])) out[k] = Math.max(a, Math.min(b, Math.round(+o[k])));
+  if (o.mode === 'random' || o.mode === 'classic') out.mode = o.mode; if (!out.mode) out.mode = 'classic';
+  if (o.special != null) out.special = +o.special ? 1 : 0;
   return out;
 }
 
@@ -93,7 +95,7 @@ class Room {
       return;
     }
     if (m.t === 'say') {
-      if (!this.M || !p.alive || this.M.revealT >= 0 || g.time + this.M.t - c.lastSay < 1) return;
+      if (!this.M || !p.alive || g.muted === p.id || this.M.revealT >= 0 || g.time + this.M.t - c.lastSay < 1) return;
       c.lastSay = g.time + this.M.t;
       let kind = clean(m.kind, 10), target = m.target == null ? null : m.target | 0, text;
       if (kind === 'text') {                       // typed message
@@ -144,6 +146,7 @@ class Room {
         else if (m.op === 'bubble') g.bubble(p);
         else if (m.op === 'flood') g.floodMap(p);
         else if (m.op === 'meteor') g.meteor(p, m.target | 0);
+        else if (m.op === 'use') g.useAbility(p, m.arg == null ? undefined : m.arg | 0);
         else if (m.op === 'break') { const now = Date.now(); if (now - (c.lastBreak || 0) > 55) { c.lastBreak = now; g.breakIce(p); } }
         break;
       }
@@ -153,8 +156,9 @@ class Room {
   flush() {
     const g = this.game;
     for (const e of g.events) {
-      // private events: only the Bubble player hears about its own trackers
-      if (e.type === 'bubbleAlert' || e.type === 'bubble') { const to = e.type === 'bubble' ? e.p : e.to; const c = this.clients.find(c => c.slot === to); if (c) send(c.ws, { t: 'ev', e }); continue; }
+      // private events: only the player they're for (or only the Fire team) hears about them
+      if (e.type === 'bubbleAlert' || e.type === 'bubble' || e.to != null) { const to = e.type === 'bubble' ? e.p : e.to; const c = this.clients.find(c => c.slot === to); if (c) send(c.ws, { t: 'ev', e }); continue; }
+      if (e.toFire) { for (const c of this.clients) if (c.slot != null && g.players[c.slot] && g.players[c.slot].imp) send(c.ws, { t: 'ev', e }); continue; }
       const out = { ...e };
       if (e.type === 'report' || e.type === 'emergency') out.meeting = g.meeting;
       this.all({ t: 'ev', e: out });
@@ -220,9 +224,10 @@ class Room {
   snapshot() {
     const g = this.game, r2 = v => Math.round(v * 100) / 100;
     const { total, done } = g.taskTotals();
-    const base = { t: 's', p: g.players.map(p => [r2(p.x), r2(p.z), r2(p.face), r2(p.vx), r2(p.vz), p.alive ? 1 : 0, p.inVent, p.tp || 0, p.ejected ? 1 : 0, p.holding, p.carry >= 0 ? 1 : 0, p.frozen > 0 ? 1 : 0, p.breaks || 0, p.sky ? 1 : 0]),
-      b: g.bodies.map(b => [b.pid, r2(b.x), r2(b.z)]), sab: g.sab ? { type: g.sab.type, t: r2(g.sab.t), held: g.sab.held } : null, sabCd: r2(g.sabCd), bcd: r2(g.buttonCd), done, total, fl: g.flood ? r2(g.flood.t) : 0, mt: g.meteors.map(m => [m.id, r2(m.x), r2(m.z), r2(m.t)]) };
-    for (const c of this.clients) { const p = c.slot != null && g.players[c.slot]; if (p) send(c.ws, { ...base, kc: r2(p.killCd), ml: p.meetings, ac: r2(p.abilCd), us: p.uses, sp: p.spirit ? r2(p.spirit.t) : 0, sk: p.sky ? r2(p.sky.t) : 0, tr: p.tracks, ch: p.charges ?? 0, cht: r2(p.chargeT || 0) }); }
+    const base = { t: 's', p: g.players.map(p => [r2(p.x), r2(p.z), r2(p.face), r2(p.vx), r2(p.vz), p.alive ? 1 : 0, p.inVent, p.tp || 0, p.ejected ? 1 : 0, p.holding, p.carry >= 0 ? 1 : 0, p.frozen > 0 ? 1 : 0, p.breaks || 0, p.sky ? 1 : 0, p.invis > 0 ? 1 : 0, p.disguise ? p.disguise.id : -1]),
+      b: g.bodies.map(b => [b.pid, r2(b.x), r2(b.z)]), sab: g.sab ? { type: g.sab.type, t: r2(g.sab.t), held: g.sab.held } : null, sabCd: r2(g.sabCd), bcd: r2(g.buttonCd), done, total, fl: g.flood ? r2(g.flood.t) : 0, mt: g.meteors.map(m => [m.id, r2(m.x), r2(m.z), r2(m.t)]), mu: g.muted };
+    const traps = g.traps.map(t => [t.id, r2(t.x), r2(t.z)]);
+    for (const c of this.clients) { const p = c.slot != null && g.players[c.slot]; if (p) send(c.ws, { ...base, kc: r2(p.killCd), ml: p.meetings, ac: r2(p.abilCd), us: p.uses, sp: p.spirit ? r2(p.spirit.t) : 0, sk: p.sky ? r2(p.sky.t) : 0, tr: p.tracks, ch: p.charges ?? 0, cht: r2(p.chargeT || 0), st: r2(p.stun || 0), bl: r2(p.blind || 0), sh: p.shield ? 1 : 0, sn: p.snitchOn ? 1 : 0, ph: r2(p.phase || 0), trp: p.imp ? traps : undefined }); }
   }
 }
 

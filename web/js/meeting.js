@@ -82,7 +82,7 @@ export function planChat(g, dur) {
 
 function statement(g, p) {
   const R = g.R, A = p.ai, M = g.meeting;
-  if (!p.alive) return null;
+  if (!p.alive || g.muted === p.id) return null;
   if (!p.imp) {
     const recent = A.claims.filter(c => g.time - c.t < 120);
     const k = recent.find(c => c.kind === 'kill' && g.players[c.who].alive);
@@ -90,6 +90,10 @@ function statement(g, p) {
     if (g.meeting.body >= 0 && g.players[g.meeting.body] && R() < 0.12) return { pid: p.id, text: pick(R, ['was that an ASTEROID??', 'something fell out of the sky', 'there is an Eruption among us 🌋']) };
     const fl = g.lastFlood && g.time - g.lastFlood < 90;
     if (fl && R() < 0.15) return { pid: p.id, text: pick(R, ['thank you whoever flooded the map 🌊', 'the underwater one saved us', 'flooding was so clutch']) };
+    const sn = recent.find(c => c.kind === 'snitch' && g.players[c.who].alive);
+    if (sn) { accuse(g, p.id, sn.who, 60); return { pid: p.id, text: `I'm the Snitch — I finished my tasks and ${nm(g, sn.who).toUpperCase()} is FIRE` }; }
+    const ins = recent.find(c => c.kind === 'inspect' && g.players[c.who].alive);
+    if (ins) { accuse(g, p.id, ins.who, 65); return { pid: p.id, text: `Detective here: I inspected ${nm(g, ins.who)} and they HAVE killed` }; }
     const fr = recent.find(c => c.kind === 'frozen');
     if (fr && R() < 0.35) return { pid: p.id, text: pick(R, ['someone FROZE everyone, there is an Ice among us', 'I got frozen solid and couldn\'t move', 'ice froze me again 🧊 vote carefully']) };
     const bm = recent.find(c => c.kind === 'burnedMe' && g.players[c.who].alive);
@@ -178,7 +182,7 @@ export function botVote(g, p, tally) {
 }
 export function count(g) {
   const tally = {}; let skip = 0;
-  for (const p of g.players) { if (!p.alive || p.voted == null) continue; if (p.voted < 0) skip++; else tally[p.voted] = (tally[p.voted] || 0) + 1; }
+  for (const p of g.players) { if (!p.alive || p.voted == null) continue; const w = p.role === 'mayor' ? 2 : 1; if (p.voted < 0) skip += w; else tally[p.voted] = (tally[p.voted] || 0) + w; }
   let top = -1, tv = 0, tie = false;
   for (const [id, v] of Object.entries(tally)) { if (v > tv) { tv = v; top = +id; tie = false; } else if (v === tv) tie = true; }
   const ejected = top >= 0 && !tie && tv > skip ? top : -1;

@@ -14,6 +14,35 @@ export const ROLES = {
   eruption: { team: 'fire', name: 'Eruption', emoji: '🌋', color: '#ff6a1a', goal: 'Fire that calls down asteroids on any Water puddle on the map. A red circle warns them for 2 seconds — if they don\'t run, they burn. Start with 2, earn one every 45 s, stack up to 3.', ability: 'Asteroid', key: 'F', cd: 8, start: 2, max: 3, recharge: 45, warn: 2, radius: 1.7 },
   bucket: { team: 'fire', name: 'Bucket', emoji: '🪣', color: '#c0c8d0', goal: 'Fire that scoops puddles into a bucket. Dump them in one of the 4 big buckets so nobody can ever report them.', ability: 'Dump', key: 'F' },
 };
+// ---- Random Roles mode only (23 more) — `act` = what F does: 'near' (closest puddle), 'pick' (choose anyone), 'self', or none (passive)
+const X = (team, name, emoji, goal, extra = {}) => ({ team, name, emoji, goal, extra: true, ...extra });
+Object.assign(ROLES, {
+  medic: X('water', 'Medic', '💉', 'Press F next to someone to give them a shield — the next Fire attack on them fails. 1 use.', { ability: 'Shield', act: 'near', uses: 1 }),
+  detective: X('water', 'Detective', '🔎', 'Press F next to someone to find out if they have killed since the last meeting. 2 uses.', { ability: 'Inspect', act: 'near', uses: 2 }),
+  mayor: X('water', 'Mayor', '🎩', 'Your vote counts twice in meetings.'),
+  sheriff: X('water', 'Sheriff', '🤠', 'Press F next to someone to shoot them. If they are Fire, they die. If they are Water… you die. 1 shot.', { ability: 'Shoot', act: 'near', uses: 1 }),
+  lookout: X('water', 'Lookout', '🔭', 'You see much further than everyone else.'),
+  speedy: X('water', 'Speedy', '💨', 'You move 30% faster.'),
+  snitch: X('water', 'Snitch', '📢', 'Finish all your tasks and every Fire shows up on your map — but the Fire get warned.'),
+  mechanic: X('water', 'Mechanic', '🔧', 'You can use the vents like Fire (V). Careful — anyone who sees you vent will think you are Fire.'),
+  bodyguard: X('water', 'Bodyguard', '🛡️', 'If Fire attacks someone right next to you, you take the hit instead.'),
+  psychic: X('water', 'Psychic', '🔮', 'Press F to sense which room a Fire is in right now. 40 s reload.', { ability: 'Sense', act: 'self', cd: 40 }),
+  radar: X('water', 'Radar', '📡', 'Every living puddle shows up on your map as a dot (no colours).'),
+  medium: X('water', 'Medium', '👻', 'At the start of every meeting the spirits tell you one puddle who is definitely Water.'),
+  clover: X('water', 'Lucky Clover', '🍀', 'The first time Fire attacks you, you survive.'),
+  alarm: X('water', 'Alarm', '🚨', 'Whenever someone is killed within 12 m of you, your alarm goes off.'),
+  hydrant: X('water', 'Hydrant', '🚒', 'Press F to blast water around you — everyone within 4.5 m is stunned for 3 s. 40 s reload.', { ability: 'Blast', act: 'self', cd: 40 }),
+  shadow: X('fire', 'Shadow', '🌑', 'Press F to turn invisible for 8 s. Nobody can see you — or witness your kills. 40 s reload.', { ability: 'Vanish', act: 'self', cd: 40 }),
+  morph: X('fire', 'Morph', '🎭', 'Press F to disguise as another puddle for 15 s. Witnesses will blame them! 45 s reload.', { ability: 'Disguise', act: 'self', cd: 45 }),
+  smoke: X('fire', 'Smoke', '💨', 'Press F to throw a smoke bomb — everyone within 7 m is nearly blind for 6 s. 40 s reload.', { ability: 'Smoke', act: 'self', cd: 40 }),
+  lava: X('fire', 'Lava', '🫕', 'Your kill cooldown is 35% shorter.'),
+  trap: X('fire', 'Trapper', '🪤', 'Press F to hide a fire trap at your feet. The first Water to step on it burns. 3 traps per game.', { ability: 'Trap', act: 'self', uses: 3, cd: 10 }),
+  silencer: X('fire', 'Silencer', '🤐', 'Press F to pick someone who can\'t talk in the next meeting. Once per round.', { ability: 'Mute', act: 'pick' }),
+  phantom: X('fire', 'Phantom', '🫥', 'Press F to slip through walls for 6 s. 40 s reload.', { ability: 'Phase', act: 'self', cd: 40 }),
+  hacker: X('fire', 'Hacker', '💻', 'Every Water puddle shows on your map, and sabotages reload twice as fast.'),
+});
+export const FIRE_EXTRA = Object.keys(ROLES).filter(r => ROLES[r].extra && ROLES[r].team === 'fire');
+export const WATER_EXTRA = Object.keys(ROLES).filter(r => ROLES[r].extra && ROLES[r].team === 'water');
 export const FIRE_SPECIALS = ['sponge', 'bucket', 'ice', 'eruption'], WATER_SPECIALS = ['toilet', 'rain', 'ext', 'evap', 'unicorn', 'bubble', 'underwater'];
 export const isFire = r => ROLES[r] && ROLES[r].team === 'fire';
 export const roleName = r => (ROLES[r] || ROLES.water).name;

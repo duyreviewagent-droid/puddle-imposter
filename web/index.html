@@ -34,6 +34,7 @@
       <div class="lab">YOU</div>
       <div class="you"><input id="nm" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false"><div id="swatches" class="swatches"></div></div>
       <div class="opts">
+        <div><div class="lab">MODE</div><div class="seg" id="o-mode" data-k="mode"><b data-v="classic">Classic</b><b data-v="random">🎲 Random Roles</b></div></div>
         <div><div class="lab">YOUR ROLE</div><select id="o-rolesel" class="sel"><option value="random">Random</option><option value="water">💧 Water</option><option value="fire">🔥 Fire</option><option value="sponge">🧽 Sponge (Fire)</option><option value="bucket">🪣 Bucket (Fire)</option><option value="ice">🧊 Ice (Fire)</option><option value="eruption">🌋 Eruption (Fire)</option><option value="toilet">🚽 Toilet (Water)</option><option value="rain">🌧️ Raining (Water)</option><option value="ext">🧯 Fire Extinguisher (Water)</option><option value="evap">☁️ Evaporation (Water)</option><option value="unicorn">🦄 Unicorn (Water)</option><option value="bubble">🫧 Bubble (Water)</option><option value="underwater">🌊 Underwater (Water)</option></select></div>
         <div><div class="lab">FIRE PLAYERS</div><div class="seg" id="o-imps" data-k="imps"><b data-v="1">1</b><b data-v="2">2</b><b data-v="3">3</b></div></div>
         <div><div class="lab">PUDDLES</div><div class="seg" id="o-count" data-k="count"><b data-v="6">6</b><b data-v="8">8</b><b data-v="10">10</b><b data-v="12">12</b></div></div>
@@ -66,6 +67,7 @@
     <div id="lb-sum" class="lbsum"></div>
     <div id="lb-host" class="lbhost">
       <select id="lb-map"></select>
+      <div><span class="lab">MODE</span> <div class="seg" id="lb-mode"><b data-v="classic">Classic</b><b data-v="random">🎲 Random Roles</b></div></div>
       <div><span class="lab">FIRE</span> <div class="seg" id="lb-imps"><b data-v="1">1</b><b data-v="2">2</b><b data-v="3">3</b></div></div>
     </div>
     <div class="row"><button id="lb-start" class="big green">▶ START GAME</button><div id="lb-wait" class="lbwait"></div><button id="lb-ward" class="grey">👕</button><button id="lb-leave" class="grey">Leave</button></div>
@@ -97,6 +99,7 @@
         <p><b>Sabotage</b> the lights so they can't see, or start a heatwave that melts everyone if it isn't fixed in time.</p>
         <p>Fake tasks, blame someone else, and win when Fire equals Water.</p></div>
     </div>
+    <p style="color:#ffd84a;margin:10px 0 0">🎲 <b>Random Roles mode</b> (solo + online): everyone gets a random role from 34 — the specials below plus 23 more (Medic, Sheriff, Detective, Mayor, Shadow, Morph, Trapper, Silencer…). Check your role card!</p>
     <h3 style="margin:14px 0 4px">SPECIAL ROLES</h3>
     <div class="cols roles"><div><p>🚽 <b>Toilet</b> (Water) — stand on any vent, press <b>F</b>, flush to any other vent.</p><p>🌧️ <b>Raining</b> (Water) — press <b>F</b> anywhere to wash away the lights/heatwave emergency.</p><p>🧯 <b>Fire Extinguisher</b> (Water) — press <b>F</b> by a burned body to revive it (2 per game, only before it's reported). You can smell smoke on the minimap.</p><p>☁️ <b>Evaporation</b> (Water) — press <b>F</b> to float out of your body as vapor for 20 s, through walls, seeing everything. <b>F</b> again to go back. Your body stays behind and can still be burned!</p><p>🦄 <b>Unicorn</b> (Water) — <b>F</b> rides a rainbow into the sky for 15 s: you see the whole map. <b>F</b> to slide down. If Fire burns the bottom of the rainbow, you fall and die.</p><p>🫧 <b>Bubble</b> (Water) — <b>F</b> next to someone sticks a tracker bubble on them (3 per game). They show on your map, and if they kill you get an alert.</p><p>🌊 <b>Underwater</b> (Water) — <b>F</b> floods the whole map for 15 s; nobody can be killed while it's underwater (2 per game, 40 s reload).</p></div><div><p>🧽 <b>Sponge</b> (Fire) — soaks puddles up. No body left behind.</p><p>🧊 <b>Ice</b> (Fire) — press <b>F</b> to freeze ALL the Water (3× per game, 30 s reload). Frozen puddles wait 2 s, then spam-click 12 times to break out.</p><p>🌋 <b>Eruption</b> (Fire) — <b>F</b> calls an asteroid on any Water puddle. They get a 2 s red warning circle to run. Start with 2, +1 every 45 s, up to 3.</p><p>🪣 <b>Bucket</b> (Fire) — scoops puddles into a bucket, then press <b>F</b> at one of the 4 big buckets to dump them for good. Slower while carrying.</p></div>
     </div>

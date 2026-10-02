@@ -1,7 +1,7 @@
 // Rules + computer puddles. No three.js here: the main loop reads positions and events from this.
 import { MAPS, buildMap, roomName, COLORS, TASK_NAMES, rng } from './maps.js';
 import { randomCos, cleanCos } from './cosdata.js';
-import { ROLES, FIRE_SPECIALS, WATER_SPECIALS, isFire } from './roles.js';
+import { ROLES, FIRE_SPECIALS, WATER_SPECIALS, FIRE_EXTRA, WATER_EXTRA, isFire } from './roles.js';
 
 export const SPEED = 4.2, RAD = 0.3, KILL_R = 1.7, REPORT_R = 2.8, USE_R = 1.45, VENT_R = 1.0;
 export const VIS = 7.5, VIS_LOW = 2.6, VIS_IMP = 10.5;
@@ -38,16 +38,26 @@ export class Game {
     for (const i of impIds) this.players[i].imp = true;
     // special roles: Fire can be Sponge/Bucket, Water can be Toilet/Raining/Fire Extinguisher
     for (const p of this.players) { p.role = p.imp ? 'fire' : 'water'; p.abilCd = 10; p.uses = 2; p.carry = -1; }
-    if (o.special !== false) {
+    const forced = humans.length === 1 && ROLES[o.role] && o.role !== 'water' && o.role !== 'fire' && isFire(o.role) === this.players[0].imp ? o.role : null;
+    if (o.mode === 'random') {
+      // Random Roles mode: EVERYONE gets a random role from the big pool (classic specials + the 23 extras)
+      const deal = (list, ps) => { let bag = []; for (const p of ps) { if (!bag.length) bag = list.slice().sort(() => R() - 0.5); p.role = bag.pop(); } };
+      if (forced) this.players[0].role = forced;
+      deal(['fire', ...FIRE_SPECIALS, ...FIRE_EXTRA].filter(r => r !== forced), this.players.filter(p => p.imp && !(forced && p.id === 0)));
+      // plain Water cards are shuffled into the Water deck so not everyone has a power
+      deal(['water', 'water', 'water', 'water', 'water', 'water', ...WATER_SPECIALS, ...WATER_EXTRA].filter(r => r !== forced), this.players.filter(p => !p.imp && !(forced && p.id === 0)));
+    } else if (o.special !== false) {
       const give = (list, team) => {
         const pool = this.players.filter(p => p.imp === (team === 'fire') && p.role === (team === 'fire' ? 'fire' : 'water') && !(humans.length === 1 && p.id === 0 && ROLES[o.role] && o.role !== 'water' && o.role !== 'fire'));
         // Water gets at most one special per 3 Water players (they're info-heavy); Fire can all be special
         let cap = team === 'fire' ? 99 : Math.max(1, Math.floor(pool.length / 3));
         for (const r of list.slice().sort(() => R() - 0.5)) { if (!pool.length || cap <= 0 || R() > (team === 'fire' ? 0.6 : 0.7)) continue; const k = Math.floor(R() * pool.length); pool[k].role = r; pool.splice(k, 1); cap--; }
       };
-      if (humans.length === 1 && ROLES[o.role] && o.role !== 'water' && o.role !== 'fire') this.players[0].role = o.role;
+      if (humans.length === 1 && ROLES[o.role] && !ROLES[o.role].extra && o.role !== 'water' && o.role !== 'fire') this.players[0].role = o.role;     // extras only exist in Random Roles mode
       give(FIRE_SPECIALS.filter(r => r !== this.players[0].role), 'fire'); give(WATER_SPECIALS.filter(r => r !== this.players[0].role), 'water');
     }
+    for (const p of this.players) { p.shield = p.role === 'clover'; p.stun = 0; p.blind = 0; p.invis = 0; p.phase = 0; p.disguise = null; p.killedSince = false; if (ROLES[p.role].extra && ROLES[p.role].uses) p.uses = ROLES[p.role].uses; }
+    this.traps = []; this.muted = -1;
     for (const p of this.players) { p.frozen = 0; p.tracks = []; if (p.role === 'ice') p.uses = ROLES.ice.uses; if (p.role === 'underwater') p.uses = ROLES.underwater.uses; if (p.role === 'eruption') { p.charges = ROLES.eruption.start; p.chargeT = 0; } }
     this.meteors = [];
     // tasks: everyone gets a list (imposters get a fake one)
@@ -85,9 +95,12 @@ export class Game {
     for (let k = 1; k < n; k++) { const t = k / n; if (!this.open(Math.floor(ax + (bx - ax) * t), Math.floor(az + (bz - az) * t))) return false; }
     return true;
   }
-  vision(p) { if (!p.alive) return 999; if (p.imp) return VIS_IMP; return this.sab && this.sab.type === 'lights' ? VIS_LOW : VIS; }
+  vision(p) { if (!p.alive) return 999; if (p.blind > 0) return 1.4; const look = p.role === 'lookout' ? 1.6 : 1; if (p.imp) return VIS_IMP * look; return (this.sab && this.sab.type === 'lights' ? VIS_LOW : VIS) * look; }
   canSee(p, x, z) { const d = Math.hypot(x - p.x, z - p.z); return d <= this.vision(p) && this.los(p.x, p.z, x, z); }
-  sees(p, q) { return q.alive && q.inVent < 0 && this.canSee(p, q.x, q.z); }
+  sees(p, q) { return q.alive && q.inVent < 0 && !(q.invis > 0 && !p.imp) && this.canSee(p, q.x, q.z); }
+  shownAs(q) { return q.disguise ? q.disguise.id : q.id; }       // who witnesses think they saw (Morph)
+  sabReload(n) { return n * (this.players.some(p => p.alive && p.role === 'hacker') ? 0.5 : 1); }
+  nearTarget(p, r = 2.4) { let best = null, bd = r; for (const q of this.players) { if (q === p || !q.alive || q.inVent >= 0 || q.sky) continue; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < bd && this.los(p.x, p.z, q.x, q.z)) { bd = d; best = q; } } return best; }
   move(p, dx, dz, ghost = false) {
     if (ghost) { p.x = Math.max(1, Math.min(this.map.W - 1, p.x + dx)); p.z = Math.max(1, Math.min(this.map.H - 1, p.z + dz)); return; }
     p.x += dx; this.collide(p); p.z += dz; this.collide(p);
@@ -176,6 +189,15 @@ export class Game {
   reviveTarget(p) { if (p.role !== 'ext' || !p.alive || p.uses <= 0) return null; let best = null, bd = REPORT_R; for (const b of this.bodies) { if (b.reported || b.style !== 'fire') continue; const dd = Math.hypot(p.x - b.x, p.z - b.z); if (dd < bd && this.los(p.x, p.z, b.x, b.z)) { bd = dd; best = b; } } return best; }
   // what the role's special button would do right now (or null)
   ability(p) {
+    const RI = ROLES[p.role];
+    if (RI && RI.extra && RI.act && p.alive) {
+      if (p.frozen > 0 || p.stun > 0) return null;
+      if (RI.uses && p.uses <= 0) return null;
+      if (p.abilCd > 0) return null;
+      if (p.role === 'silencer' && (p.mutedUsed || this.muted >= 0)) return null;
+      if (RI.act === 'near') { const q = this.nearTarget(p); return q ? { kind: 'use', q } : null; }
+      return { kind: 'use' };
+    }
     if (!p.alive) return null;
     if (p.role === 'bucket') { const d = this.dumpNear(p); return d >= 0 ? { kind: 'dump', i: d } : null; }
     if (p.role === 'toilet') { const v = this.anyVentNear(p); return v >= 0 && p.abilCd <= 0 && p.inVent < 0 ? { kind: 'flush', i: v } : null; }
@@ -208,6 +230,39 @@ export class Game {
     if (!(q.frozen > 0) || q.iceT < ROLES.ice.minT) return;
     q.breaks++;
     if (q.breaks >= ROLES.ice.breaks) { q.frozen = 0; this.emit({ type: 'thaw', p: q.id }); }
+  }
+  // Random Roles mode abilities (one entry point; `arg` is a target id for the Silencer)
+  useAbility(p, arg) {
+    const a = this.ability(p); if (!a || a.kind !== 'use' || this.state !== 'play') return;
+    const RI = ROLES[p.role], q = a.q;
+    if (RI.uses) p.uses--; if (RI.cd) p.abilCd = RI.cd;
+    switch (p.role) {
+      case 'medic': q.shield = true; this.emit({ type: 'shieldGive', to: p.id, q: q.id }); if (p.ai && q.ai) q.ai.sus[p.id] -= 10; break;
+      case 'detective': {
+        this.emit({ type: 'inspect', to: p.id, q: q.id, killed: !!q.killedSince });
+        if (p.ai) { if (q.killedSince) { p.ai.sus[q.id] = 100; p.ai.claims.push({ kind: 'inspect', who: q.id, t: this.time }); if (p.meetings > 0) { p.ai.mode = 'button'; p.ai.path = null; } } else { p.ai.sus[q.id] -= 30; p.ai.cleared.add(q.id); } }
+        break;
+      }
+      case 'sheriff': {
+        const victim = q.imp ? q : p;
+        victim.alive = false; victim.deadT = this.time; victim.holding = -1; victim.sky = null; victim.spirit = null;
+        this.bodies.push({ pid: victim.id, x: victim.x, z: victim.z, t: this.time, room: roomName(this.map, victim.x, victim.z), style: 'shot', killer: p.id });
+        this.emit({ type: 'shot', p: p.id, q: q.id, misfire: !q.imp, x: q.x, z: q.z });
+        this.checkWin(); break;
+      }
+      case 'psychic': {
+        const fires = this.players.filter(f => f.alive && f.imp); const f = fires[Math.floor(this.R() * fires.length)];
+        if (f) { this.emit({ type: 'sense', to: p.id, room: roomName(this.map, f.x, f.z) }); if (p.ai) for (const w of this.players) { const s = p.ai.seen[w.id]; if (w !== p && s && this.time - s.t < 8 && s.room === roomName(this.map, f.x, f.z)) p.ai.sus[w.id] += 15; } }
+        break;
+      }
+      case 'hydrant': for (const w of this.players) if (w !== p && w.alive && Math.hypot(w.x - p.x, w.z - p.z) < 4.5) { w.stun = 3; w.holding = -1; if (w.ai && w.ai.mode === 'hunt') w.ai.mode = 'idle'; } this.emit({ type: 'blast', p: p.id, x: p.x, z: p.z }); break;
+      case 'shadow': p.invis = 8; this.emit({ type: 'vanish', p: p.id, x: p.x, z: p.z }); break;
+      case 'morph': { const others = this.players.filter(w => w !== p && w.alive); const w = others[Math.floor(this.R() * others.length)]; if (w) { p.disguise = { id: w.id, t: 15 }; this.emit({ type: 'disguise', p: p.id, as: w.id }); } break; }
+      case 'smoke': for (const w of this.players) if (w !== p && w.alive && !w.imp && Math.hypot(w.x - p.x, w.z - p.z) < 7) w.blind = 6; this.emit({ type: 'smoke', p: p.id, x: p.x, z: p.z }); break;
+      case 'trap': this.traps.push({ x: p.x, z: p.z, by: p.id, id: (this.trapN = (this.trapN || 0) + 1) }); this.emit({ type: 'trapSet', p: p.id, x: p.x, z: p.z, toFire: true }); break;
+      case 'silencer': { const t = this.players[arg]; if (!t || !t.alive || t === p) { p.abilCd = 0; return; } this.muted = t.id; p.mutedUsed = true; this.emit({ type: 'mute', to: p.id, q: t.id }); break; }
+      case 'phantom': p.phase = 6; this.emit({ type: 'phase', p: p.id }); break;
+    }
   }
   // Eruption: an asteroid on someone's spot. 2 s warning circle, then anyone Water still inside burns
   meteor(p, targetId) {
@@ -268,7 +323,7 @@ export class Game {
     }
     if (p.ai) { p.ai.sus[b.killer] = Math.max(p.ai.sus[b.killer], 60); }
   }
-  ventNear(p) { if (!p.imp || !p.alive || p.carry >= 0) return -1; let best = -1, bd = VENT_R; this.map.vents.forEach((v, i) => { const dd = Math.hypot(p.x - v.x, p.z - v.z); if (dd < bd) { bd = dd; best = i; } }); return best; }
+  ventNear(p) { if ((!p.imp && p.role !== 'mechanic') || !p.alive || p.carry >= 0) return -1; let best = -1, bd = VENT_R; this.map.vents.forEach((v, i) => { const dd = Math.hypot(p.x - v.x, p.z - v.z); if (dd < bd) { bd = dd; best = i; } }); return best; }
   bodyNear(p) { if (!p.alive || p.frozen > 0 || p.spirit || p.sky) return null; let best = null, bd = REPORT_R; for (const b of this.bodies) { const dd = Math.hypot(p.x - b.x, p.z - b.z); if (dd < bd && this.los(p.x, p.z, b.x, b.z)) { bd = dd; best = b; } } return best; }
   killTarget(p) {
     if (!p.imp || !p.alive || p.inVent >= 0 || p.killCd > 0 || p.carry >= 0 || this.flood) return null;
@@ -281,19 +336,25 @@ export class Game {
     if (p.done.has(id) || !p.tasks.includes(id)) return;
     if (p.imp) { p.done.add(id); return; }          // fake: nothing counts
     p.done.add(id); if (p.ai) p.ai.lastTask = this.map.tasks[id];
+    if (p.role === 'snitch' && !p.snitchOn && p.tasks.every(t => p.done.has(t))) { p.snitchOn = true; this.emit({ type: 'snitch', p: p.id }); if (p.ai) for (const f of this.players) if (f.imp && f.alive) { p.ai.sus[f.id] = 95; p.ai.claims.push({ kind: 'snitch', who: f.id, t: this.time }); } }
     this.emit({ type: 'task', p: p.id });
     this.checkWin();
   }
   kill(k, v, opt = {}) {
     if (!v.alive || this.state !== 'play' || this.flood) return;
+    const guard = !opt.guarded && this.players.find(g => g.role === 'bodyguard' && g.alive && g !== v && g !== k && !g.imp && Math.hypot(g.x - v.x, g.z - v.z) < 3);
+    if (guard) { this.emit({ type: 'guard', p: guard.id, q: v.id, x: guard.x, z: guard.z }); return this.kill(k, guard, { ...opt, guarded: true }); }
+    if (v.shield) { v.shield = false; if (!opt.remote) k.killCd = this.o.killCd * 0.5; this.emit({ type: 'shieldPop', v: v.id, x: v.x, z: v.z, by: k.id }); if (v.ai && !opt.remote) { v.ai.sus[k.id] = 100; v.ai.claims.push({ kind: 'kill', who: this.shownAs(k), victim: v.id, room: roomName(this.map, v.x, v.z), t: this.time }); if (v.meetings > 0) { v.ai.mode = 'button'; v.ai.path = null; } } return; }
+    k.killedSince = true;
     const fromSky = !!v.sky;
     v.alive = false; v.deadT = this.time; v.holding = -1; if (v.spirit) { v.spirit = null; } v.sky = null;
     const style = opt.remote ? 'fire' : k.role === 'sponge' ? 'sponge' : k.role === 'bucket' ? 'bucket' : 'fire';
     if (style === 'fire') this.bodies.push({ pid: v.id, x: v.x, z: v.z, t: this.time, room: roomName(this.map, v.x, v.z), style, killer: k.id });
     if (style === 'bucket') k.carry = v.id;
     if (style === 'fire' && !opt.remote) { k.x = v.x; k.z = v.z; k.tp = (k.tp || 0) + 1; }
-    if (!opt.remote) k.killCd = this.o.killCd;
+    if (!opt.remote) k.killCd = this.o.killCd * (k.role === 'lava' ? 0.65 : 1) * (this.o.mode === 'random' ? 0.8 : 1);
     this.emit({ type: 'kill', killer: k.id, victim: v.id, x: v.x, z: v.z, style, kx: k.x, kz: k.z, sky: fromSky, meteor: !!opt.remote });
+    for (const w of this.players) if (w.role === 'alarm' && w.alive && w !== v && w !== k && Math.hypot(w.x - v.x, w.z - v.z) < 12) { this.emit({ type: 'alarm', to: w.id, x: v.x, z: v.z, room: roomName(this.map, v.x, v.z) }); if (w.ai && style === 'fire') { w.ai.mode = 'report'; w.ai.goal = { x: v.x, z: v.z }; w.ai.path = null; } }
     // Bubble trackers: whoever has a bubble on the killer gets an alert
     for (const w of this.players) {
       if (w.role !== 'bubble' || !w.alive || w === k || !w.tracks.includes(k.id)) continue;
@@ -304,9 +365,10 @@ export class Game {
     for (const w of this.players) {
       if (!w.alive || w === k || !w.ai || w.imp) continue;
       if (opt.remote) { if (this.canSee(w, v.x, v.z)) { w.ai.mode = 'report'; w.ai.goal = { x: v.x, z: v.z }; w.ai.path = null; } continue; }
+      if (k.invis > 0) { if (style === 'fire' && this.canSee(w, v.x, v.z)) { w.ai.mode = 'report'; w.ai.goal = { x: v.x, z: v.z }; w.ai.path = null; } continue; }      // an invisible Shadow: they see the body, not the killer
       if (w.spirit || w.sky || this.canSee(w, k.x, k.z)) {
-        w.ai.claims.push({ kind: 'kill', who: k.id, victim: v.id, room: roomName(this.map, k.x, k.z), t: this.time });
-        w.ai.sus[k.id] = 100;
+        w.ai.claims.push({ kind: 'kill', who: this.shownAs(k), victim: v.id, room: roomName(this.map, k.x, k.z), t: this.time });
+        w.ai.sus[this.shownAs(k)] = 100;
         if (style === 'fire') { w.ai.mode = 'report'; w.ai.goal = { x: v.x, z: v.z }; w.ai.path = null; }
         else if (w.meetings > 0 && this.buttonCd <= 0) { w.ai.mode = 'button'; w.ai.path = null; }
       }
@@ -350,7 +412,7 @@ export class Game {
     }
     return true;
   }
-  fixLights() { if (this.sab && this.sab.type === 'lights') { this.sab = null; this.sabCd = 30; this.emit({ type: 'fixed', kind: 'lights' }); } }
+  fixLights() { if (this.sab && this.sab.type === 'lights') { this.sab = null; this.sabCd = this.sabReload(30); this.emit({ type: 'fixed', kind: 'lights' }); } }
   callMeeting(p, body) {
     if (this.state !== 'play') return;
     if (!body) { p.meetings--; }
@@ -358,11 +420,16 @@ export class Game {
     this.state = 'meeting'; this.meetingN++;
     this.meeting = { by: p.id, body: body ? body.pid : -1, room: body ? body.room : roomName(this.map, p.x, p.z), t: this.time };
     this.emit({ type: body ? 'report' : 'emergency', by: p.id, body: body ? body.pid : -1 });
+    for (const m of this.players) if (m.role === 'medium' && m.alive) {
+      const water = this.players.filter(w => w.alive && !w.imp && w !== m); const w = water[Math.floor(this.R() * water.length)];
+      if (w) { this.emit({ type: 'spirits', to: m.id, q: w.id }); if (m.ai) { m.ai.sus[w.id] = -40; m.ai.cleared.add(w.id); m.ai.claims.push({ kind: 'alibi', who: w.id, t: this.time }); } }
+    }
   }
   // called by the meeting screen when votes are in
   endMeeting(ejectId) {
     if (ejectId >= 0) { const p = this.players[ejectId]; p.alive = false; p.ejected = true; p.deadT = this.time; p.carry = -1; }
-    this.flood = null; this.meteors = [];
+    this.flood = null; this.meteors = []; this.muted = -1;
+    for (const p of this.players) { p.killedSince = false; p.mutedUsed = false; p.stun = 0; p.blind = 0; p.invis = 0; p.phase = 0; p.disguise = null; }
     for (const p of this.players) { p.carry = -1; p.frozen = 0; if (p.spirit) { p.spirit = null; p.abilCd = ROLES.evap.cd; } if (p.sky) { p.sky = null; p.abilCd = ROLES.unicorn.cd; } }      // a meeting empties every bucket and thaws everyone
     this.bodies = []; this.sab = null; this.sabCd = 15; this.buttonCd = 15;
     for (const p of this.players) { p.killCd = this.o.killCd; p.voted = null; if (p.ai) { p.ai.claims = p.ai.claims.filter(c => this.time - c.t < 1); p.ai.with.fill(0); } }
@@ -384,6 +451,11 @@ export class Game {
   update(dt) {
     if (this.state !== 'play') return;
     this.time += dt; this.buttonCd -= dt;
+    for (const tr of this.traps) {
+      const v = this.players.find(v => v.alive && !v.imp && v.inVent < 0 && !v.sky && !v.spirit && Math.hypot(v.x - tr.x, v.z - tr.z) < 0.8);
+      if (v && !this.flood) { tr.used = true; this.emit({ type: 'trapHit', x: tr.x, z: tr.z, v: v.id }); this.kill(this.players[tr.by], v, { remote: true }); }
+    }
+    this.traps = this.traps.filter(t => !t.used);
     for (const m of this.meteors) {
       m.t -= dt; if (m.t > 0) continue;
       const k = this.players[m.by], R = ROLES.eruption.radius;
@@ -395,6 +467,8 @@ export class Game {
     for (const p of this.players) { if (p.alive) { p.killCd = Math.max(0, p.killCd - dt); p.abilCd = Math.max(0, p.abilCd - dt); }
       if (p.spirit) { p.spirit.t -= dt; if (p.spirit.t <= 0 || !p.alive) this.condense(p); }
       if (p.sky) { p.sky.t -= dt; if (p.sky.t <= 0) this.land(p); }
+      for (const k of ['stun', 'blind', 'invis', 'phase']) if (p[k] > 0) p[k] = Math.max(0, p[k] - dt);
+      if (p.disguise) { p.disguise.t -= dt; if (p.disguise.t <= 0) { p.disguise = null; this.emit({ type: 'undisguise', p: p.id }); } }
       if (p.role === 'eruption' && p.charges < ROLES.eruption.max) { p.chargeT += dt; if (p.chargeT >= ROLES.eruption.recharge) { p.chargeT = 0; p.charges++; } }
       if (p.frozen > 0) {
         p.iceT += dt;
@@ -406,7 +480,7 @@ export class Game {
       this.sab.t -= dt;
       const held = this.map.valves.map((v, i) => this.players.some(p => p.alive && !p.imp && p.holding === i && Math.hypot(p.x - v.x, p.z - v.z) < USE_R + 0.4));
       this.sab.held = held;
-      if (held[0] && held[1]) { this.sab.fixT += dt; if (this.sab.fixT > 0.6) { this.sab = null; this.sabCd = 35; this.emit({ type: 'fixed', kind: 'heat' }); } }
+      if (held[0] && held[1]) { this.sab.fixT += dt; if (this.sab.fixT > 0.6) { this.sab = null; this.sabCd = this.sabReload(35); this.emit({ type: 'fixed', kind: 'heat' }); } }
       else if (this.sab.t <= 0 && !this.noWin) { this.winner = { side: 'imp', why: 'Heatwave — all the Water evaporated' }; this.state = 'over'; this.emit({ type: 'win', ...this.winner, heat: true }); return; }
     }
     for (const p of this.players) if (p.ai) this.think(p, dt);
@@ -423,6 +497,8 @@ export class Game {
       const s = Math.min(d, SPEED * 0.8 * dt); p.vx = dx / d * SPEED * 0.8; p.vz = dz / d * SPEED * 0.8;
       this.move(p, dx / d * s, dz / d * s, true); p.face = Math.atan2(dx, dz); return;
     }
+    if (p.stun > 0) { p.vx = p.vz = 0; return; }
+    if (ROLES[p.role].extra && ROLES[p.role].act && this.R() < dt * 0.5) this.botAbility(p);
     if (!p.imp && this.meteors.length && !(p.frozen > 0) && !p.spirit && !p.sky) for (const m of this.meteors) {
       if (Math.hypot(p.x - m.x, p.z - m.z) > ROLES.eruption.radius + 0.4) continue;
       A.dodge ||= {}; if (A.dodge[m.id] == null) A.dodge[m.id] = this.R() < 0.45 + 0.2 * this.o.smarts;      // do they notice in time?
@@ -599,7 +675,7 @@ export class Game {
     const wp = A.path[A.pi];
     if (!wp) return true;
     const dx = wp[0] - p.x, dz = wp[1] - p.z, d = Math.hypot(dx, dz);
-    const sp = SPEED * 0.94 * speedMul * (p.carry >= 0 ? 0.72 : 1);
+    const sp = SPEED * 0.94 * speedMul * (p.carry >= 0 ? 0.72 : 1) * (p.role === 'speedy' ? 1.3 : 1);
     if (d < 0.12) { A.pi++; if (A.pi >= A.path.length) { p.vx = p.vz = 0; return true; } return false; }
     const s = Math.min(d, sp * dt);
     p.vx = dx / d * sp; p.vz = dz / d * sp;
@@ -651,9 +727,29 @@ export class Game {
       const prev = A.mode;
       A.blind = new Set(this.players.filter(w => this.R() < 0.3 - 0.08 * this.o.smarts).map(w => w.id));
       A.mode = 'hunt';
-      if (this.witnesses(p, q) === 0) { A.target = q.id; A.huntT = 7; A.path = null; return; }
+      if (this.witnesses(p, q) === 0) { A.target = q.id; A.huntT = 7; A.path = null; this.preHunt(p); return; }
       A.mode = prev;
     }
+  }
+  // how computer puddles use the Random Roles abilities
+  botAbility(p) {
+    const a = this.ability(p); if (!a) return;
+    const A = p.ai, q = a.q, R = this.R();
+    switch (p.role) {
+      case 'medic': if (q && A.sus[q.id] < 20 && R < 0.4) this.useAbility(p); break;
+      case 'detective': if (q && (A.sus[q.id] > 25 || R < 0.15)) this.useAbility(p); break;
+      case 'sheriff': if (q && A.sus[q.id] >= 85 + (2 - this.o.smarts) * 5) this.useAbility(p); break;
+      case 'psychic': if (R < 0.25) this.useAbility(p); break;
+      case 'hydrant': if (this.players.some(w => w !== p && w.alive && A.sus[w.id] >= 60 && Math.hypot(w.x - p.x, w.z - p.z) < 4)) this.useAbility(p); break;
+      case 'trap': if (!this.players.some(w => w !== p && w.alive && !w.imp && this.sees(w, p)) && R < 0.05) this.useAbility(p); break;
+      case 'silencer': { if (R > 0.03) break; const loud = this.players.filter(w => w.alive && !w.imp && w.ai).sort((x, y) => y.ai.sus[p.id] - x.ai.sus[p.id])[0]; if (loud) this.useAbility(p, loud.id); break; }
+      case 'phantom': if (A.mode === 'flee' && R < 0.5) this.useAbility(p); break;
+    }
+  }
+  // Fire tricks right before going in for a kill
+  preHunt(p) {
+    const a = this.ability(p); if (!a) return;
+    if (p.role === 'shadow' || p.role === 'morph' || (p.role === 'smoke' && this.R() < 0.6)) this.useAbility(p);
   }
   afterKill(p) {
     const A = p.ai, M = this.map;
