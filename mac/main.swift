@@ -30,6 +30,14 @@ final class GameWebView: WKWebView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
+/// lets the page put text on the Mac clipboard (window.webkit.messageHandlers.copy.postMessage(text))
+final class CopyHandler: NSObject, WKScriptMessageHandler {
+    func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
+        guard let t = m.body as? String else { return }
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(t, forType: .string)
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
     var window: NSWindow!
     var web: GameWebView!
@@ -51,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.preferences.isElementFullscreenEnabled = true
         cfg.setURLSchemeHandler(files, forURLScheme: "puddle")
+        cfg.userContentController.add(CopyHandler(), name: "copy")
         web = GameWebView(frame: frame, configuration: cfg)
         web.navigationDelegate = self
         web.uiDelegate = self
@@ -104,6 +113,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         m.addItem(withTitle: "Hide Puddle Imposter", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         m.addItem(withTitle: "Quit Puddle Imposter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = m
+        let editItem = NSMenuItem(); main.addItem(editItem)
+        let e = NSMenu(title: "Edit")
+        e.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        e.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        e.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        e.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = e
         let viewItem = NSMenuItem(); main.addItem(viewItem)
         let v = NSMenu(title: "View")
         v.addItem(NSMenuItem(title: "Toggle Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f"))

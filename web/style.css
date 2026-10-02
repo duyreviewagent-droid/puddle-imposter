@@ -244,3 +244,6 @@ h1 .r { font-size: 62px; color: #ff4a3a; text-shadow: 0 0 24px rgba(255,60,30,.7
 .help .roles p { font-size: 14px; margin: 5px 0; }
 .roletitle.fire { color: #ff6a1a; text-shadow: 0 0 40px rgba(255,90,0,.95); }
 .roletitle.water { color: #8fd8ff; text-shadow: 0 0 40px rgba(90,190,255,.9); }
+
+#lb-code { cursor: pointer; user-select: text; -webkit-user-select: text; }
+input { user-select: text; -webkit-user-select: text; }

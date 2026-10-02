@@ -946,7 +946,14 @@ for (const b of $('lb-count').children) b.onclick = () => lobbyOpts({ count: +b.
 for (const b of $('lb-imps').children) b.onclick = () => lobbyOpts({ imps: Math.min(+b.dataset.v, maxImps(Math.max(lobbyState.opts.count, lobbyState.players.length))) });
 $('lb-start').onclick = () => { initAudio(); nsend({ t: 'start' }); };
 $('lb-leave').onclick = () => { leaveOnline(); showOnline(); };
-$('lb-copy').onclick = () => { const l = inviteLink(lobbyState.code); navigator.clipboard?.writeText(l).then(() => { $('lb-copy').textContent = '✓ Copied'; setTimeout(() => $('lb-copy').textContent = '🔗 Copy invite link', 1500); }).catch(() => prompt('Invite link', l)); };
+// copy that works everywhere: the Mac app's native clipboard, the browser clipboard, or the old select-and-copy trick
+function copyText(t) {
+  try { if (window.webkit?.messageHandlers?.copy) { window.webkit.messageHandlers.copy.postMessage(t); return true; } } catch { }
+  try { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0'; document.body.append(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); if (ok) return true; } catch { }
+  navigator.clipboard?.writeText(t).catch(() => { }); return true;
+}
+$('lb-copy').onclick = () => { copyText(inviteLink(lobbyState.code)); $('lb-copy').textContent = '✓ Copied!'; sfx.blip(1300); setTimeout(() => $('lb-copy').textContent = '🔗 Copy invite link', 1500); };
+$('lb-code').onclick = () => { copyText(lobbyState.code); $('lb-code').style.opacity = 0.5; setTimeout(() => $('lb-code').style.opacity = 1, 300); };
 $('b-online').onclick = () => { initAudio(); save(); showOnline(); };
 $('on-back').onclick = () => { leaveOnline(); toTitle(); };
 const lobbyCreateOpts = () => ({ special: settings.special, mapId: settings.mapId, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer });
