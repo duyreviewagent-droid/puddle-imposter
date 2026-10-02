@@ -254,3 +254,8 @@ input { user-select: text; -webkit-user-select: text; }
 #ice-txt small { display: block; font-size: 20px; letter-spacing: 1px; margin-top: 8px; color: #cfeeff; }
 #iceov.shake #ice-txt { animation: ishake .15s; }
 @keyframes ishake { 25% { transform: translate(calc(-50% - 8px), -50%); } 75% { transform: translate(calc(-50% + 8px), -50%); } }
+
+#floodfx { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s; z-index: 2;
+  background: radial-gradient(ellipse at 50% 0%, rgba(120,210,255,.18), rgba(10,70,140,.42) 70%, rgba(5,30,70,.62));
+  animation: none; }
+@keyframes caust { from { background-position: 0 0, 0 0; } to { background-position: 0 0, 120px 80px; } }

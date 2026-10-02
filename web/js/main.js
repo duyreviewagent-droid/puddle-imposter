@@ -125,6 +125,7 @@ function disposeScene(sc) {
   sc.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { const m = Array.isArray(o.material) ? o.material : [o.material]; m.forEach(x => { for (const k in x) if (x[k] && x[k].isTexture) x[k].dispose(); x.dispose(); }); } });
 }
 function toTitle() {
+  $('floodfx').style.opacity = 0;
   dctx.clearRect(0, 0, dark.width, dark.height);
   if (taskPanel) taskPanel.close();
   S = 'title'; hideAll(); $('scr-title').classList.remove('hidden');
@@ -351,6 +352,8 @@ function handleEvents() {
     else if (e.type === 'land') { world.rainbowAt(e.p, 0, 0, false); if (e.p === me) { sfx.whoosh(); h.sky = null; } }
     else if (e.type === 'bubble') { if (e.p === me) { sfx.drip(1); sfx.blip(1800); flashBanner(`🫧 TRACKER ON ${game.players[e.q].name.toUpperCase()}<small>${e.left} bubble${e.left === 1 ? '' : 's'} left</small>`, 2); if (NET && !(h.tracks || []).includes(e.q)) (h.tracks ||= []).push(e.q); } }
     else if (e.type === 'bubbleAlert') { if (e.to === me) { sfx.heatAlarm(); flashBanner(`🫧 ${game.players[e.killer].name.toUpperCase()} JUST KILLED!<small>in ${e.room} — your bubble saw it</small>`, 3); bubblePing = { x: e.x, z: e.z, t: 3 }; } }
+    else if (e.type === 'flood') { sfx.flood(); flashBanner(`🌊 THE MAP IS UNDERWATER<small>${h.imp ? 'you can\'t burn anyone for 15 seconds' : 'Fire can\'t kill anyone for 15 seconds'}${e.p === me ? ' · ' + e.uses + ' flood' + (e.uses === 1 ? '' : 's') + ' left' : ''}</small>`, 3); if (NET && !game.flood) game.flood = { t: ROLES.underwater.dur }; }
+    else if (e.type === 'drain') { sfx.drain(); flashBanner('🌊 THE WATER DRAINED AWAY<small>careful — Fire can kill again</small>', 2); if (NET) game.flood = null; }
     else if (e.type === 'task') buildTaskList();
     else if (e.type === 'win') { endT = e.heat ? 2.5 : 2.2; if (e.heat) { $('flash').style.background = '#ff7a10'; $('flash').style.transition = 'opacity 2s'; $('flash').style.opacity = 0.8; } }
   }
@@ -507,6 +510,7 @@ function updateEject(dt) {
 
 // ------------------------------------------------------------------ end
 function showEnd() {
+  $('floodfx').style.opacity = 0;
   S = 'end'; if (taskPanel) taskPanel.close();
   hideAll(); $('scr-end').classList.remove('hidden');
   $('flash').style.opacity = 0; setTimeout(() => $('flash').style.background = '#ff1a1a', 2000);
@@ -632,6 +636,8 @@ function drawWorld(dt, aspect) {
   visR += (target - visR) * Math.min(1, dt * 1.6);
   const heat = game.sab && game.sab.type === 'heat';
   const hr = game.map.rooms.find(r => r.name === h.room);
+  world.floodLevel(!!game.flood, dt);
+  $('floodfx').style.opacity = game.flood ? 1 : 0;
   world.update(dt, spirit && h.spirit ? spirit : h.sky ? { x: game.map.W / 2, z: game.map.H / 2 } : h, { lightsOut: game.sab && game.sab.type === 'lights', heat, outdoor: !!(hr && hr.out) || !!h.sky });
   // characters
   game.players.forEach((p, i) => {
@@ -717,7 +723,8 @@ function drawDark() {
 function doAbility() {
   const h = H(); if (S !== 'play' || !h.alive) return;
   const a = game.ability(h);
-  if (!a) { if (['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap', 'unicorn', 'bubble'].includes(h.role)) sfx.bad(); return; }
+  if (!a) { if (['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap', 'unicorn', 'bubble', 'underwater'].includes(h.role)) sfx.bad(); return; }
+  if (a.kind === 'flood') { if (NET) nsend({ t: 'act', a: 'ability', op: 'flood' }); else game.floodMap(h); return; }
   if (a.kind === 'rainbow') { if (NET) { h.sky = { t: ROLES.unicorn.dur }; nsend({ t: 'act', a: 'ability', op: 'rainbow' }); } else game.rainbow(h); return; }
   if (a.kind === 'land') { if (NET) nsend({ t: 'act', a: 'ability', op: 'land' }); else game.land(h); return; }
   if (a.kind === 'bubble') { if (NET) nsend({ t: 'act', a: 'ability', op: 'bubble' }); else game.bubble(h); return; }
@@ -741,15 +748,15 @@ function openFlush(from) {
 }
 $('flush-x').onclick = () => $('flushpick').classList.add('hidden');
 function abilityHud(h) {
-  const has = ['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap', 'unicorn', 'bubble'].includes(h.role) && h.alive;
+  const has = ['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap', 'unicorn', 'bubble', 'underwater'].includes(h.role) && h.alive;
   $('a-abil').classList.toggle('hidden', !has);
   if (!has) return;
-  const I = { toilet: ['🚽', 'FLUSH'], rain: ['🌧️', 'RAIN'], ext: ['🧯', 'REVIVE'], bucket: ['🪣', 'DUMP'], ice: ['🧊', 'FREEZE'], evap: h.spirit ? ['💧', 'RETURN'] : ['☁️', 'VAPOR'], unicorn: h.sky ? ['⬇️', 'SLIDE DOWN'] : ['🦄', 'RAINBOW'], bubble: ['🫧', 'BUBBLE'] }[h.role];
+  const I = { toilet: ['🚽', 'FLUSH'], rain: ['🌧️', 'RAIN'], ext: ['🧯', 'REVIVE'], bucket: ['🪣', 'DUMP'], ice: ['🧊', 'FREEZE'], evap: h.spirit ? ['💧', 'RETURN'] : ['☁️', 'VAPOR'], unicorn: h.sky ? ['⬇️', 'SLIDE DOWN'] : ['🦄', 'RAINBOW'], bubble: ['🫧', 'BUBBLE'], underwater: ['🌊', 'FLOOD'] }[h.role];
   $('abil-ic').textContent = I[0]; $('abil-lab').textContent = I[1];
   $('a-abil').classList.toggle('on', !!game.ability(h));
   const cdMax = ROLES[h.role].cd || 1;
-  const timed = h.role === 'toilet' || h.role === 'rain' || h.role === 'ice' || (h.role === 'evap' && !h.spirit) || (h.role === 'unicorn' && !h.sky);
-  $('abil-cd').textContent = h.role === 'bubble' ? String(3 - (h.tracks || []).length) : h.role === 'ice' && h.uses <= 0 ? '0' : timed && h.abilCd > 0 ? Math.ceil(h.abilCd) : h.role === 'ext' ? (h.uses > 0 ? '' : '0') : '';
+  const timed = h.role === 'toilet' || h.role === 'rain' || h.role === 'ice' || (h.role === 'evap' && !h.spirit) || (h.role === 'unicorn' && !h.sky) || h.role === 'underwater';
+  $('abil-cd').textContent = h.role === 'underwater' && h.uses <= 0 ? '0' : h.role === 'bubble' ? String(3 - (h.tracks || []).length) : h.role === 'ice' && h.uses <= 0 ? '0' : timed && h.abilCd > 0 ? Math.ceil(h.abilCd) : h.role === 'ext' ? (h.uses > 0 ? '' : '0') : '';
   $('a-abil').style.setProperty('--cd', timed ? Math.max(0, h.abilCd / cdMax) : 0);
   const K = { sponge: ['🧽', 'SOAK'], bucket: ['🪣', 'SCOOP'] }[h.role] || ['🔥', 'BURN'];
   $('kill-ic').textContent = K[0]; $('kill-lab').textContent = K[1];
@@ -803,6 +810,7 @@ function roleCard() {
     if (h.role === 'toilet') return `<div class="ab"><span>🚽 Flush from any vent [F]</span>${ready(h.abilCd)}</div>`;
     if (h.role === 'rain') return `<div class="ab"><span>🌧️ Rain away emergencies [F]</span>${game.sab ? ready(h.abilCd) : '<b class="cd">no emergency</b>'}</div>`;
     if (h.role === 'ext') return `<div class="ab"><span>🧯 Revive a burned body [F]</span><b class="${h.uses > 0 ? 'rd' : 'cd'}">${h.uses} left</b></div>`;
+    if (h.role === 'underwater') return `<div class="ab"><span>🌊 Flood the map [F]</span>${game.flood ? `<b class="cd">flooded ${Math.ceil(game.flood.t)}s</b>` : h.uses > 0 ? ready(h.abilCd) : '<b class="cd">used up</b>'}</div><div class="ab"><span>Floods left</span><b class="rd">${h.uses} / 2</b></div>`;
     if (h.role === 'unicorn') return `<div class="ab"><span>🦄 Ride the rainbow / slide down [F]</span>${h.sky ? `<b class="cd">${Math.ceil(h.sky.t)}s in the sky</b>` : ready(h.abilCd)}</div>`;
     if (h.role === 'bubble') return `<div class="ab"><span>🫧 Bubble someone nearby [F]</span><b class="rd">${3 - (h.tracks || []).length} left</b></div><div class="ab"><span>Tracking</span><b class="rd">${(h.tracks || []).map(i => game.players[i].name).join(', ') || 'nobody yet'}</b></div>`;
     if (h.role === 'evap') return `<div class="ab"><span>☁️ Evaporate / return [F]</span>${h.spirit ? `<b class="cd">${Math.ceil(h.spirit.t)}s left</b>` : ready(h.abilCd)}</div>`;
@@ -818,7 +826,7 @@ function roleCard() {
     role = RI.emoji + ' ' + RI.name.toUpperCase() + (h.role !== 'fire' ? ' · FIRE' : '');
     goal = RI.goal;
     const kn = h.role === 'sponge' ? '🧽 Soak up [Q]' : h.role === 'bucket' ? '🪣 Scoop [Q]' : '🔥 Burn [Q]';
-    ab = `<div class="ab"><span>${kn}</span>${h.carry >= 0 ? '<b class="cd">bucket full</b>' : ready(h.killCd)}</div>${abil()}<div class="ab"><span>▦ Vent [V]</span><b class="rd">${h.carry >= 0 ? 'too heavy' : h.inVent >= 0 ? 'inside' : 'ready'}</b></div><div class="ab"><span>☠ Sabotage [1 lights / 2 heat]</span>${game.sab ? '<b class="cd">active</b>' : ready(game.sabCd)}</div>`;
+    ab = `<div class="ab"><span>${kn}</span>${game.flood ? '<b class="cd">🌊 underwater</b>' : h.carry >= 0 ? '<b class="cd">bucket full</b>' : ready(h.killCd)}</div>${abil()}<div class="ab"><span>▦ Vent [V]</span><b class="rd">${h.carry >= 0 ? 'too heavy' : h.inVent >= 0 ? 'inside' : 'ready'}</b></div><div class="ab"><span>☠ Sabotage [1 lights / 2 heat]</span>${game.sab ? '<b class="cd">active</b>' : ready(game.sabCd)}</div>`;
   } else {
     role = RI.emoji + ' ' + RI.name.toUpperCase() + (h.role !== 'water' ? ' · WATER' : '');
     goal = RI.goal;
@@ -1116,7 +1124,7 @@ function applySnap(m) {
   const wasSab = game.sab;
   game.sab = m.sab ? { ...m.sab, fixT: 0 } : null;
   if (!!wasSab !== !!game.sab) buildTaskList();
-  game.sabCd = m.sabCd; game.buttonCd = m.bcd;
+  game.sabCd = m.sabCd; game.buttonCd = m.bcd; game.flood = m.fl > 0 ? { t: m.fl } : null;
   const tt = game._tt; if (tt.done !== m.done || tt.total !== m.total) { tt.done = m.done; tt.total = m.total; buildTaskList(); }
   const h = H(); h.killCd = m.kc; h.meetings = m.ml; h.abilCd = m.ac ?? 0; h.uses = m.us ?? 0; if (m.sk > 0) h.sky = { t: m.sk }; else if (h.sky && h.sky.t < ROLES.unicorn.dur - 1) h.sky = null; if (m.tr) h.tracks = m.tr;
   if (m.sp > 0) h.spirit = { t: m.sp }; else if (h.spirit && m.sp === 0 && h.spirit.t < ROLES.evap.dur - 1) h.spirit = null;

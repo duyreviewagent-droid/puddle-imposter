@@ -142,6 +142,7 @@ class Room {
         else if (m.op === 'rainbow') g.rainbow(p);
         else if (m.op === 'land') g.land(p);
         else if (m.op === 'bubble') g.bubble(p);
+        else if (m.op === 'flood') g.floodMap(p);
         else if (m.op === 'break') { const now = Date.now(); if (now - (c.lastBreak || 0) > 55) { c.lastBreak = now; g.breakIce(p); } }
         break;
       }
@@ -219,7 +220,7 @@ class Room {
     const g = this.game, r2 = v => Math.round(v * 100) / 100;
     const { total, done } = g.taskTotals();
     const base = { t: 's', p: g.players.map(p => [r2(p.x), r2(p.z), r2(p.face), r2(p.vx), r2(p.vz), p.alive ? 1 : 0, p.inVent, p.tp || 0, p.ejected ? 1 : 0, p.holding, p.carry >= 0 ? 1 : 0, p.frozen > 0 ? 1 : 0, p.breaks || 0, p.sky ? 1 : 0]),
-      b: g.bodies.map(b => [b.pid, r2(b.x), r2(b.z)]), sab: g.sab ? { type: g.sab.type, t: r2(g.sab.t), held: g.sab.held } : null, sabCd: r2(g.sabCd), bcd: r2(g.buttonCd), done, total };
+      b: g.bodies.map(b => [b.pid, r2(b.x), r2(b.z)]), sab: g.sab ? { type: g.sab.type, t: r2(g.sab.t), held: g.sab.held } : null, sabCd: r2(g.sabCd), bcd: r2(g.buttonCd), done, total, fl: g.flood ? r2(g.flood.t) : 0 };
     for (const c of this.clients) { const p = c.slot != null && g.players[c.slot]; if (p) send(c.ws, { ...base, kc: r2(p.killCd), ml: p.meetings, ac: r2(p.abilCd), us: p.uses, sp: p.spirit ? r2(p.spirit.t) : 0, sk: p.sky ? r2(p.sky.t) : 0, tr: p.tracks }); }
   }
 }

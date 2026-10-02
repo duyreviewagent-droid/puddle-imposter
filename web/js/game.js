@@ -48,7 +48,7 @@ export class Game {
       if (humans.length === 1 && ROLES[o.role] && o.role !== 'water' && o.role !== 'fire') this.players[0].role = o.role;
       give(FIRE_SPECIALS.filter(r => r !== this.players[0].role), 'fire'); give(WATER_SPECIALS.filter(r => r !== this.players[0].role), 'water');
     }
-    for (const p of this.players) { p.frozen = 0; p.tracks = []; if (p.role === 'ice') p.uses = ROLES.ice.uses; }
+    for (const p of this.players) { p.frozen = 0; p.tracks = []; if (p.role === 'ice') p.uses = ROLES.ice.uses; if (p.role === 'underwater') p.uses = ROLES.underwater.uses; }
     // tasks: everyone gets a list (imposters get a fake one)
     for (const p of this.players) {
       const pool = M.tasks.map(t => t.id).sort(() => R() - 0.5);
@@ -181,6 +181,7 @@ export class Game {
     if (p.frozen > 0) return null;
     if (p.role === 'rain') return this.sab && p.abilCd <= 0 ? { kind: 'rain' } : null;
     if (p.role === 'ext') { const b = this.reviveTarget(p); return b ? { kind: 'revive', body: b } : null; }
+    if (p.role === 'underwater') return p.uses > 0 && p.abilCd <= 0 && !this.flood ? { kind: 'flood' } : null;
     if (p.role === 'unicorn') return p.sky ? { kind: 'land' } : p.abilCd <= 0 && p.inVent < 0 ? { kind: 'rainbow' } : null;
     if (p.role === 'bubble') { if (p.tracks.length >= ROLES.bubble.uses) return null; const q = this.bubbleTarget(p); return q ? { kind: 'bubble', q } : null; }
     if (p.role === 'evap') return p.spirit ? { kind: 'return' } : p.abilCd <= 0 && p.inVent < 0 ? { kind: 'evaporate' } : null;
@@ -205,6 +206,14 @@ export class Game {
     if (!(q.frozen > 0) || q.iceT < ROLES.ice.minT) return;
     q.breaks++;
     if (q.breaks >= ROLES.ice.breaks) { q.frozen = 0; this.emit({ type: 'thaw', p: q.id }); }
+  }
+  // Underwater: the whole map floods for 15 s and nobody can be killed
+  floodMap(p) {
+    if (p.role !== 'underwater' || !p.alive || p.uses <= 0 || p.abilCd > 0 || this.flood || p.frozen > 0 || this.state !== 'play') return;
+    p.uses--; p.abilCd = ROLES.underwater.cd; this.flood = { t: ROLES.underwater.dur, by: p.id };
+    for (const q of this.players) if (q.ai && q.ai.mode === 'hunt') q.ai.mode = 'idle';
+    this.lastFlood = this.time;
+    this.emit({ type: 'flood', p: p.id, uses: p.uses });
   }
   // Unicorn: up a rainbow into the sky (the rainbow's foot stays at p.x/p.z, where Fire can burn it)
   rainbow(p) {
@@ -251,7 +260,7 @@ export class Game {
   ventNear(p) { if (!p.imp || !p.alive || p.carry >= 0) return -1; let best = -1, bd = VENT_R; this.map.vents.forEach((v, i) => { const dd = Math.hypot(p.x - v.x, p.z - v.z); if (dd < bd) { bd = dd; best = i; } }); return best; }
   bodyNear(p) { if (!p.alive || p.frozen > 0 || p.spirit || p.sky) return null; let best = null, bd = REPORT_R; for (const b of this.bodies) { const dd = Math.hypot(p.x - b.x, p.z - b.z); if (dd < bd && this.los(p.x, p.z, b.x, b.z)) { bd = dd; best = b; } } return best; }
   killTarget(p) {
-    if (!p.imp || !p.alive || p.inVent >= 0 || p.killCd > 0 || p.carry >= 0) return null;
+    if (!p.imp || !p.alive || p.inVent >= 0 || p.killCd > 0 || p.carry >= 0 || this.flood) return null;
     let best = null, bd = KILL_R;
     for (const q of this.players) { if (!q.alive || q.imp || q.inVent >= 0) continue; const dd = Math.hypot(p.x - q.x, p.z - q.z); if (dd < bd && this.los(p.x, p.z, q.x, q.z)) { bd = dd; best = q; } }
     return best;
@@ -265,7 +274,7 @@ export class Game {
     this.checkWin();
   }
   kill(k, v) {
-    if (!v.alive || this.state !== 'play') return;
+    if (!v.alive || this.state !== 'play' || this.flood) return;
     const fromSky = !!v.sky;
     v.alive = false; v.deadT = this.time; v.holding = -1; if (v.spirit) { v.spirit = null; } v.sky = null;
     const style = k.role === 'sponge' ? 'sponge' : k.role === 'bucket' ? 'bucket' : 'fire';
@@ -341,6 +350,7 @@ export class Game {
   // called by the meeting screen when votes are in
   endMeeting(ejectId) {
     if (ejectId >= 0) { const p = this.players[ejectId]; p.alive = false; p.ejected = true; p.deadT = this.time; p.carry = -1; }
+    this.flood = null;
     for (const p of this.players) { p.carry = -1; p.frozen = 0; if (p.spirit) { p.spirit = null; p.abilCd = ROLES.evap.cd; } if (p.sky) { p.sky = null; p.abilCd = ROLES.unicorn.cd; } }      // a meeting empties every bucket and thaws everyone
     this.bodies = []; this.sab = null; this.sabCd = 15; this.buttonCd = 15;
     for (const p of this.players) { p.killCd = this.o.killCd; p.voted = null; if (p.ai) { p.ai.claims = p.ai.claims.filter(c => this.time - c.t < 1); p.ai.with.fill(0); } }
@@ -361,7 +371,8 @@ export class Game {
   // ------------------------------------------------------------------ simulation
   update(dt) {
     if (this.state !== 'play') return;
-    this.time += dt; this.buttonCd -= dt; if (!this.sab) this.sabCd -= dt;
+    this.time += dt; this.buttonCd -= dt;
+    if (this.flood) { this.flood.t -= dt; if (this.flood.t <= 0) { this.flood = null; this.emit({ type: 'drain' }); } } if (!this.sab) this.sabCd -= dt;
     for (const p of this.players) { if (p.alive) { p.killCd = Math.max(0, p.killCd - dt); p.abilCd = Math.max(0, p.abilCd - dt); }
       if (p.spirit) { p.spirit.t -= dt; if (p.spirit.t <= 0 || !p.alive) this.condense(p); }
       if (p.sky) { p.sky.t -= dt; if (p.sky.t <= 0) this.land(p); }
@@ -394,6 +405,7 @@ export class Game {
     }
     if (p.sky) { p.vx = p.vz = 0; const c = p.ai.claims.find(c => (c.kind === 'kill' || c.kind === 'vent') && this.time - c.t < 0.5); if (c && p.sky.t < 12) this.land(p); return; }
     if (p.role === 'unicorn' && p.abilCd <= 0 && !this.sab && (A.mode === 'idle' || A.mode === 'doing') && this.R() < dt * 0.08) { this.rainbow(p); return; }
+    if (p.role === 'underwater' && p.uses > 0 && p.abilCd <= 0 && !this.flood && (A.claims.some(c => c.kind === 'kill' && this.time - c.t < 2) || this.R() < dt * 0.012)) this.floodMap(p);
     if (p.role === 'bubble' && p.tracks.length < 3 && this.R() < dt * 0.6 && this.bubbleTarget(p)) this.bubble(p);
     if (p.spirit) { p.vx = p.vz = 0; const c = p.ai.claims.find(c => (c.kind === 'kill' || c.kind === 'vent') && this.time - c.t < 0.5); if (c && p.spirit.t < 17) this.condense(p); return; }
     if (p.role === 'evap' && p.abilCd <= 0 && !this.sab && (A.mode === 'idle' || A.mode === 'doing') && this.R() < dt * 0.08) { this.evaporate(p); return; }
@@ -575,7 +587,7 @@ export class Game {
       const q = this.players.find(q => q.alive && !q.imp && q.inVent < 0 && Math.hypot(q.x - p.x, q.z - p.z) < 9 && this.sees(p, q));
       if (q) { this.freeze(p); A.mode = 'hunt'; A.target = q.id; A.huntT = 9; A.path = null; A.blind = new Set(this.players.map(w => w.id)); return; }
     }
-    if (p.killCd > 0 || A.mode === 'hunt' || p.carry >= 0 || A.mode === 'dump') return;
+    if (p.killCd > 0 || A.mode === 'hunt' || p.carry >= 0 || A.mode === 'dump' || this.flood) return;
     const crewLeft = this.crewAlive();
     const urge = A.aggro * (0.45 + this.o.smarts * 0.35) * (crewLeft <= 3 ? 1.6 : 1);
     for (const q of this.players) {

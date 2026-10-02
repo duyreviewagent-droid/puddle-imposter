@@ -7,11 +7,12 @@ export const ROLES = {
   evap: { team: 'water', name: 'Evaporation', emoji: '☁️', color: '#dfeeff', goal: 'Water that can rise out of its body as vapor for 20 seconds — float through walls and spy on the whole map, then snap back into your body. Your body stays behind and can still be burned!', ability: 'Evaporate', key: 'F', cd: 30, dur: 20 },
   unicorn: { team: 'water', name: 'Unicorn', emoji: '🦄', color: '#ffb0f0', goal: 'Water that rides a rainbow into the sky for 15 seconds and sees the whole map and every player. Slide back down any time — but if Fire sets the bottom of your rainbow on fire, you fall and die.', ability: 'Rainbow', key: 'F', cd: 30, dur: 15 },
   bubble: { team: 'water', name: 'Bubble', emoji: '🫧', color: '#bfe8ff', goal: 'Water that sticks up to 3 tracker bubbles on other puddles. You see them on your map, and if one of them kills, you get an alert for 3 seconds.', ability: 'Bubble', key: 'F', uses: 3 },
+  underwater: { team: 'water', name: 'Underwater', emoji: '🌊', color: '#2a9aff', goal: 'Water that floods the WHOLE map for 15 seconds — while it\'s underwater, Fire can\'t kill anyone. 2 floods per game, 40 second reload.', ability: 'Flood', key: 'F', cd: 40, uses: 2, dur: 15 },
   fire: { team: 'fire', name: 'Fire', emoji: '🔥', color: '#ff5a1a', goal: 'Set the Water on fire until Fire equals Water. Don\'t get caught.' },
   sponge: { team: 'fire', name: 'Sponge', emoji: '🧽', color: '#ffd23a', goal: 'Fire that soaks puddles up completely — your kills leave no body behind.' },
   ice: { team: 'fire', name: 'Ice', emoji: '🧊', color: '#9ae8ff', goal: 'Fire that can freeze ALL the Water solid — 3 times per game, 30 second reload. Frozen puddles are stuck for at least 2 seconds, then have to spam the screen 12 times to break out.', ability: 'Freeze', key: 'F', cd: 30, uses: 3, minT: 2, breaks: 12 },
   bucket: { team: 'fire', name: 'Bucket', emoji: '🪣', color: '#c0c8d0', goal: 'Fire that scoops puddles into a bucket. Dump them in one of the 4 big buckets so nobody can ever report them.', ability: 'Dump', key: 'F' },
 };
-export const FIRE_SPECIALS = ['sponge', 'bucket', 'ice'], WATER_SPECIALS = ['toilet', 'rain', 'ext', 'evap', 'unicorn', 'bubble'];
+export const FIRE_SPECIALS = ['sponge', 'bucket', 'ice'], WATER_SPECIALS = ['toilet', 'rain', 'ext', 'evap', 'unicorn', 'bubble', 'underwater'];
 export const isFire = r => ROLES[r] && ROLES[r].team === 'fire';
 export const roleName = r => (ROLES[r] || ROLES.water).name;

@@ -594,6 +594,19 @@ export class World {
   swirl(x, z) { for (let i = 0; i < 4; i++) setTimeout(() => this.splash(x, z, 1.4 - i * 0.25), i * 120); this.burst(x, 0.3, z, 14, 1.2); }
   rainAt(x, z) { this.rainT = 4; this.rainC = { x, z }; for (const d of this.rainDrops) { d.x = x + (Math.random() - 0.5) * 34; d.z = z + (Math.random() - 0.5) * 26; d.y = Math.random() * 9; } }
   // a rainbow for a Unicorn: arches up from its foot at (x, z); the unicorn sits on top
+  // Underwater: a sheet of water over the whole map, rising and falling
+  floodLevel(target, dt) {
+    if (!this.floodMesh) {
+      const nt = new THREE.CanvasTexture(canvas(256, 256, (g, w, h) => { g.fillStyle = '#8080ff'; g.fillRect(0, 0, w, h); for (let i = 0; i < 260; i++) { const x = Math.random() * w, y = Math.random() * h, r = 8 + Math.random() * 26; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(160,160,255,.6)'); gr.addColorStop(1, 'rgba(128,128,255,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); } }));
+      nt.wrapS = nt.wrapT = THREE.RepeatWrapping; nt.repeat.set(this.map.W / 6, this.map.H / 6);
+      this.floodMesh = new THREE.Mesh(new THREE.PlaneGeometry(this.map.W + 20, this.map.H + 20), new THREE.MeshPhysicalMaterial({ color: 0x3a9ad8, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.55, normalMap: nt, normalScale: new THREE.Vector2(0.6, 0.6), clearcoat: 1, envMapIntensity: 1.6, depthWrite: false, side: THREE.DoubleSide }));
+      this.floodMesh.rotation.x = -Math.PI / 2; this.floodMesh.position.set(this.map.W / 2, -1, this.map.H / 2); this.floodMesh.renderOrder = 5; this.scene.add(this.floodMesh); this.floodY = -0.2; this.floodTex = nt;
+    }
+    this.floodY += ((target ? 1.15 : -0.2) - this.floodY) * Math.min(1, dt * 1.6);
+    this.floodMesh.visible = this.floodY > -0.1; this.floodMesh.position.y = this.floodY;
+    this.floodTex.offset.x += dt * 0.02; this.floodTex.offset.y += dt * 0.013;
+    if (target && Math.random() < dt * 25) { const d = this.drips.find(d => !d.on); if (d) { d.on = true; d.m.visible = true; d.m.position.set(this.lastFocus.x + (Math.random() - 0.5) * 22, 0.1, this.lastFocus.z + (Math.random() - 0.5) * 16); d.v.set(0, 2.2, 0); d.m.scale.setScalar(0.6 + Math.random()); } }
+  }
   rainbowAt(id, x, z, on) {
     this.rainbows ||= new Map();
     let r = this.rainbows.get(id);
@@ -702,7 +715,7 @@ export class World {
   hideMarkers(from) { for (let i = from; i < this.markers.length; i++) this.markers[i].visible = false; }
   update(dt, focus, opts = {}) {
     this.t += dt;
-    const t = this.t;
+    const t = this.t; this.lastFocus = focus;
     // lights: nearest room lamps follow the player
     const lamps = this.lamps.slice().sort((a, b) => (a.x - focus.x) ** 2 + (a.z - focus.z) ** 2 - ((b.x - focus.x) ** 2 + (b.z - focus.z) ** 2));
     const dim = opts.lightsOut ? 0.12 : 1;
