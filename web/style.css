@@ -200,3 +200,38 @@ h1 .r { font-size: 62px; color: #ff4a3a; text-shadow: 0 0 24px rgba(255,60,30,.7
 #lb-map { background: #0b1118; color: #fff; border: 1px solid #2a3846; border-radius: 8px; padding: 7px; font: 700 14px inherit; font-family: inherit; }
 .lobby .row { align-items: center; } .lobby .big { width: auto; flex: 1; }
 .lbwait { flex: 1; color: #ffd84a; font-weight: 700; }
+
+/* walk-around lobby: compact panel so you can see the courtyard */
+#scr-lobby { justify-content: flex-start; align-items: flex-start; background: none; pointer-events: none; }
+.card.lobby { pointer-events: auto; margin: 16px; width: 430px; padding: 16px 18px; background: rgba(12,16,22,.84); }
+.card.lobby #lb-code { font-size: 40px; letter-spacing: 7px; }
+.card.lobby #lb-players { margin: 8px 0; gap: 4px; }
+.card.lobby .lp { width: 62px; font-size: 11px; } .card.lobby .lp canvas { width: 46px; height: 46px; }
+.card.lobby .big { font-size: 20px; padding: 10px; }
+.lbhint { color: #8fa2b2; font-size: 12px; margin-top: 8px; }
+#lb-copy { font-size: 13px; padding: 8px 10px; }
+/* wardrobe */
+#scr-wardrobe { justify-content: flex-end; background: none; pointer-events: none; z-index: 13; }
+.ward { pointer-events: auto; width: 440px; height: 100%; background: rgba(10,14,20,.88); border-left: 1px solid rgba(255,255,255,.1); padding: 22px; display: flex; flex-direction: column; }
+.ward h2 { margin: 0 0 12px; letter-spacing: 3px; }
+.wtabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.wtabs b { flex: 1; text-align: center; padding: 9px; border-radius: 10px; background: rgba(255,255,255,.07); cursor: pointer; }
+.wtabs b.on { background: #2a6ad0; }
+#w-items { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-content: start; }
+.wi { background: rgba(255,255,255,.06); border: 2px solid transparent; border-radius: 12px; padding: 8px 4px; text-align: center; cursor: pointer; font-size: 12px; font-weight: 700; }
+.wi .em { font-size: 34px; height: 46px; display: flex; align-items: center; justify-content: center; }
+.wi canvas { width: 70px; height: 35px; border-radius: 6px; margin: 6px 0 5px; }
+.wi.sel { border-color: #5ad0ff; box-shadow: 0 0 14px rgba(90,200,255,.5); }
+.ward .big { margin-top: 12px; }
+/* role card (bottom-left) */
+#rolecard { position: absolute; left: 16px; bottom: 16px; width: 330px; background: rgba(12,16,22,.8); border-radius: 14px; padding: 10px 14px; border: 2px solid #3a8cff; pointer-events: none; }
+#rolecard.imp { border-color: #ff3a2a; } #rolecard.ghost { border-color: #9aa6b0; }
+#rc-role { font-weight: 900; font-size: 20px; letter-spacing: 2px; }
+#rc-goal { font-size: 13px; color: #c4d0da; margin: 2px 0 6px; }
+#rc-abil { font-size: 13px; line-height: 1.6; }
+#rc-abil .ab { display: flex; justify-content: space-between; } #rc-abil .ab span { color: #8fa2b2; } #rc-abil .ab b.rd { color: #5dff9a; } #rc-abil .ab b.cd { color: #ffb84a; }
+.act::after { content: ''; position: absolute; inset: 0; border-radius: 20px; background: conic-gradient(rgba(0,0,0,.62) calc(var(--cd, 0) * 360deg), transparent 0); pointer-events: none; }
+
+.mtype { display: flex; gap: 6px; margin-top: 8px; }
+.mtype input { flex: 1; min-width: 0; background: #0b1118; border: 1px solid #2a3846; color: #fff; border-radius: 10px; padding: 8px 10px; font: 600 14px inherit; font-family: inherit; }
+.mtype button { background: #2a6ad0; font-size: 14px; padding: 8px 14px; }

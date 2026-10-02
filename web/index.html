@@ -24,7 +24,7 @@
       <button id="b-solo" class="big green">▶ PLAY SOLO<small>you + computer puddles · starts right away</small></button>
       <button id="b-online" class="big blue online">🌐 PLAY ONLINE<small>optional · lobbies · codes · invite friends</small></button>
       <div class="stats" id="stats"></div>
-      <div class="row"><button id="b-music" class="grey">♪ Music</button><button id="b-sfx" class="grey">🔊 Sound</button><button id="b-fs" class="grey">⛶ Full screen</button><button id="b-help" class="grey">? How to play</button></div>
+      <div class="row"><button id="b-ward" class="grey">👕 Wardrobe</button><button id="b-music" class="grey">♪ Music</button><button id="b-sfx" class="grey">🔊 Sound</button><button id="b-fs" class="grey">⛶ Full screen</button><button id="b-help" class="grey">? How to play</button></div>
     </div>
     <div class="tright">
       <div class="lab">MAP</div>
@@ -66,7 +66,18 @@
       <div><span class="lab">PUDDLES</span> <div class="seg" id="lb-count"><b data-v="6">6</b><b data-v="8">8</b><b data-v="10">10</b><b data-v="12">12</b></div></div>
       <div><span class="lab">IMPOSTERS</span> <div class="seg" id="lb-imps"><b data-v="1">1</b><b data-v="2">2</b><b data-v="3">3</b></div></div>
     </div>
-    <div class="row"><button id="lb-start" class="big green">▶ START GAME</button><div id="lb-wait" class="lbwait"></div><button id="lb-leave" class="grey">Leave</button></div>
+    <div class="row"><button id="lb-start" class="big green">▶ START GAME</button><div id="lb-wait" class="lbwait"></div><button id="lb-ward" class="grey">👕</button><button id="lb-leave" class="grey">Leave</button></div>
+    <div class="mtype"><input id="lb-input" maxlength="100" placeholder="Say something… (Enter or T)" autocomplete="off" spellcheck="false"><button id="lb-send">Say</button></div>
+    <div class="lbhint">Walk around with <b>WASD</b> · <b>E</b> at the wardrobe to change your look</div>
+  </div>
+</section>
+
+<section id="scr-wardrobe" class="screen hidden">
+  <div class="ward">
+    <h2>WARDROBE</h2>
+    <div class="wtabs"><b data-t="hat" class="on">🎩 Hats</b><b data-t="shirt">👕 Shirts</b><b data-t="pet">🐥 Pets</b></div>
+    <div id="w-items"></div>
+    <button id="w-done" class="big green">DONE</button>
   </div>
 </section>
 
@@ -123,6 +134,7 @@
     <button id="a-use" class="act use"><span class="ic">✋</span>USE</button>
   </div>
   <div id="sabmenu" class="hidden"><button id="s-lights">💡 Lights <small>1</small></button><button id="s-heat">🔥 Heatwave <small>2</small></button></div>
+  <div id="rolecard"><div id="rc-role"></div><div id="rc-goal"></div><div id="rc-abil"></div></div>
   <div id="saved" class="hidden">SAVED</div>
 </section>
 
@@ -144,7 +156,7 @@
     <div class="mhead"><div id="m-title">WHO IS THE IMPOSTER?</div><div id="m-sub"></div><div class="mtimer"><div id="m-timer"></div></div><div id="m-phase"></div></div>
     <div class="mbody">
       <div id="m-cards"></div>
-      <div class="mchat"><div id="m-chat"></div><div class="mquick"><button data-q="where">Where?</button><button data-q="skipq">Skip?</button><button data-q="tasks">I was doing tasks</button></div><div class="mhint" id="m-hint">Click a puddle to accuse or defend them</div></div>
+      <div class="mchat"><div id="m-chat"></div><div class="mtype"><input id="m-input" maxlength="120" placeholder="Type a message… (Enter to send)" autocomplete="off" spellcheck="false"><button id="m-send">Send</button></div><div class="mquick"><button data-q="where">Where?</button><button data-q="skipq">Skip?</button><button data-q="tasks">I was doing tasks</button></div><div class="mhint" id="m-hint">Click a puddle to accuse or defend them</div></div>
     </div>
     <div class="mfoot"><button id="m-skip" class="skip">SKIP VOTE</button><div id="m-skipvotes"></div></div>
   </div>

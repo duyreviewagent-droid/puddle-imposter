@@ -6,8 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Game, USE_R } from './js/game.js';
-import { planChat, humanSays, sayText, botVote, count, coolDown } from './js/meeting.js';
+import { planChat, humanSays, sayText, parseSay, botVote, count, coolDown } from './js/meeting.js';
 import { COLORS, MAPS } from './js/maps.js';
+import { cleanCos } from './js/cosdata.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8000);
@@ -46,7 +47,7 @@ class Room {
   }
   listing() { const h = this.clients.find(c => c.id === this.host); return { code: this.code, name: (h ? h.name : 'Puddle') + "'s lobby", n: this.clients.length, max: MAX, map: this.opts.mapId < 0 ? 'Random map' : MAPS[this.opts.mapId].name, inGame: this.state !== 'lobby' }; }
   all(m) { const s = JSON.stringify(m); for (const c of this.clients) send(c.ws, s); }
-  lobby() { this.all({ t: 'lobby', code: this.code, pub: this.pub, host: this.host, opts: this.opts, inGame: this.state !== 'lobby', players: this.clients.map(c => ({ id: c.id, name: c.name, color: c.color })) }); }
+  lobby() { this.all({ t: 'lobby', code: this.code, pub: this.pub, host: this.host, opts: this.opts, inGame: this.state !== 'lobby', players: this.clients.map(c => ({ id: c.id, name: c.name, color: c.color, cos: c.cos })) }); }
   freeColor(want) { const used = new Set(this.clients.map(c => c.color)); if (!used.has(want)) return want; return COLORS.findIndex((_, i) => !used.has(i)); }
   join(c) {
     if (this.clients.length >= MAX) return send(c.ws, { t: 'err', msg: `That lobby is full (${MAX} puddles).` });
@@ -68,7 +69,7 @@ class Room {
     if (this.state !== 'lobby') return;
     const o = this.opts, mapId = o.mapId < 0 ? Math.floor(Math.random() * MAPS.length) : o.mapId;
     const seed = Math.floor(Math.random() * 1e9);
-    const humans = this.clients.map(c => ({ name: c.name, color: c.color }));
+    const humans = this.clients.map(c => ({ name: c.name, color: c.color, cos: c.cos }));
     const g = this.game = new Game({ ...o, mapId, seed, humans, count: Math.max(o.count, humans.length) });
     this.state = 'play'; this.M = null; this.ejectT = 0;
     this.clients.forEach((c, i) => {
@@ -92,9 +93,16 @@ class Room {
     if (m.t === 'say') {
       if (!this.M || !p.alive || this.M.revealT >= 0 || g.time + this.M.t - c.lastSay < 1) return;
       c.lastSay = g.time + this.M.t;
-      const kind = clean(m.kind, 10), target = m.target == null ? null : m.target | 0;
+      let kind = clean(m.kind, 10), target = m.target == null ? null : m.target | 0, text;
+      if (kind === 'text') {                       // typed message
+        text = clean(m.text, 120); if (!text) return;
+        ({ kind, target } = parseSay(g, p.id, text));
+        this.all({ t: 'chat', pid: p.id, text });
+        if (kind) for (const r of humanSays(g, kind, target, p.id)) this.M.replies.push({ at: this.M.t + r.delay, pid: r.pid, text: r.text });
+        return;
+      }
       if (target != null && !g.players[target]) return;
-      const text = sayText(g, p.id, kind, target); if (!text) return;
+      text = sayText(g, p.id, kind, target); if (!text) return;
       this.all({ t: 'chat', pid: p.id, text });
       for (const r of humanSays(g, kind, target, p.id)) this.M.replies.push({ at: this.M.t + r.delay, pid: r.pid, text: r.text });
       return;
@@ -169,7 +177,12 @@ class Room {
     }
   }
   tick(dt) {
-    const g = this.game; if (!g) return;
+    const g = this.game;
+    if (!g) {                     // walk-around lobby: share where everyone is standing
+      this.lsT = (this.lsT || 0) - dt;
+      if (this.lsT <= 0 && this.clients.length > 1) { this.lsT = 1 / 12; this.all({ t: 'ls', p: this.clients.map(c => [c.id, c.lx, c.lz, c.lf, c.lvx, c.lvz]) }); }
+      return;
+    }
     if (this.state === 'play') { g.update(dt); this.flush(); }
     else if (this.state === 'meeting') this.meetingTick(dt);
     else if (this.state === 'eject') { this.ejectT -= dt; if (this.ejectT <= 0) { if (g.winner) this.finish(); else { this.state = 'play'; g.state = 'play'; this.all({ t: 'resume' }); } } }
@@ -195,19 +208,21 @@ class Room {
 
 const wss = new WebSocketServer({ server, maxPayload: 8192 });
 wss.on('connection', ws => {
-  const c = { id: nextId++, ws, name: 'Puddle', color: 0, room: null, slot: null };
+  const c = { id: nextId++, ws, name: 'Puddle', color: 0, cos: cleanCos(null), room: null, slot: null, lx: 0, lz: 0, lf: 0, lvx: 0, lvz: 0 };
   send(ws, { t: 'hello', id: c.id });
   ws.on('message', raw => {
     let m; try { m = JSON.parse(raw); } catch { return; }
     const r = c.room;
     switch (m.t) {
-      case 'me': c.name = clean(m.name, 12) || 'Puddle'; c.color = Math.max(0, Math.min(COLORS.length - 1, m.color | 0)); if (r && r.state === 'lobby') { c.color = r.freeColor(c.color); r.lobby(); } break;
+      case 'me': c.cos = cleanCos(m.cos); c.name = clean(m.name, 12) || 'Puddle'; c.color = Math.max(0, Math.min(COLORS.length - 1, m.color | 0)); if (r && r.state === 'lobby') { c.color = r.freeColor(c.color); r.lobby(); } break;
       case 'list': send(ws, { t: 'list', rooms: [...rooms.values()].filter(x => x.pub).map(x => x.listing()) }); break;
       case 'create': { if (r) r.leave(c); const nr = new Room(c, !!m.pub, m.opts); nr.join(c); break; }
       case 'join': { const nr = rooms.get(clean(m.code, 4).toUpperCase()); if (!nr) { send(ws, { t: 'err', msg: 'No lobby with that code.' }); break; } if (r !== nr) { if (r) r.leave(c); nr.join(c); } break; }
       case 'leave': if (r) r.leave(c); send(ws, { t: 'left' }); break;
       case 'opts': if (r && r.host === c.id && r.state === 'lobby') { r.opts = cleanOpts(m.opts, r.opts); r.lobby(); } break;
       case 'start': if (r && r.host === c.id) r.start(); break;
+      case 'lchat': if (r && r.state === 'lobby') { const text = clean(m.text, 100); if (text && Date.now() - (c.lastL || 0) > 600) { c.lastL = Date.now(); r.all({ t: 'lchat', id: c.id, text }); } } break;
+      case 'lpos': if (r && r.state === 'lobby') { for (const k of ['x', 'z', 'f', 'vx', 'vz']) { const v = +m[k]; if (Number.isFinite(v)) c['l' + k] = Math.max(-5, Math.min(80, v)); } } break;
       default: if (r) r.input(c, m);
     }
   });

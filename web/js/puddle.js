@@ -1,11 +1,12 @@
 // The puddle person: a melting dome of water standing in its own puddle, two white googly eyes with
 // jiggling pupils, a coloured outer glow (rim shell + floor halo), drips that fall and leave wet spots.
 import * as THREE from 'three';
+import { buildHat, buildShirt, drawCos2D } from './cosmetics.js';
 
 const SEG = 30, RINGS = 22;
 // profile: [radius, height] from the puddle rim (v=0) up to the top (v=1)
 const PROFILE = [[0.70, 0.0], [0.69, 0.025], [0.62, 0.06], [0.50, 0.11], [0.43, 0.2], [0.41, 0.33], [0.42, 0.48], [0.42, 0.62], [0.40, 0.75], [0.35, 0.87], [0.26, 0.97], [0.14, 1.03], [0.0, 1.05]];
-function profile(v) {
+export function profile(v) {
   const f = v * (PROFILE.length - 1), i = Math.min(PROFILE.length - 2, Math.floor(f)), t = f - i;
   const a = PROFILE[i], b = PROFILE[i + 1], s = t * t * (3 - 2 * t);
   return [a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s];
@@ -106,6 +107,22 @@ export class Puddle {
     this.heading = 0;
     this.shape(0);
   }
+  setCos(cos) {
+    for (const k of ['hat', 'shirt']) if (this[k]) { this.body.remove(this[k]); this[k].traverse(o => { if (o.geometry) o.geometry.dispose(); }); this[k] = null; }
+    this.cos = cos || null; if (!cos) return;
+    if (cos.hat && cos.hat !== 'none') { this.hat = buildHat(cos.hat); this.body.add(this.hat); }
+    if (cos.shirt && cos.shirt !== 'none') { this.shirt = buildShirt(cos.shirt, profile); this.body.add(this.shirt); }
+    this.placeCos();
+  }
+  placeCos() {
+    const d = this.dead, sq = this.squash;
+    if (this.hat) {
+      this.hat.visible = !this.ghost;
+      if (d > 0.5) { this.hat.position.set(0.75, 0.06, 0.25); this.hat.rotation.set(0, 0, 1.25); }
+      else { this.hat.position.set(0, 1.03 * sq - 0.02, 0); this.hat.rotation.set(0, 0, 0); }
+    }
+    if (this.shirt) { this.shirt.visible = !this.ghost && d < 0.5; this.shirt.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq)); }
+  }
   setGlow(on) { this.glow.visible = on; this.halo.visible = on; }
   setGhost(on) {
     this.ghost = on;
@@ -158,6 +175,7 @@ export class Puddle {
     const target = 1 + (sp > 0.3 ? Math.sin(t * 13 + this.phase) * 0.05 : 0);
     this.squashV += ((target - this.squash) * 120 - this.squashV * 10) * dt; this.squash += this.squashV * dt;
     this.shape(t);
+    if (this.cos) this.placeCos();
     // eyes ride the surface near the top-front
     const ey = (0.78 * (1 - this.dead * 0.86)) * this.squash;
     const [er] = profile(0.66);
@@ -192,7 +210,7 @@ export class Puddle {
 }
 
 // a small 2D drawing of a puddle with googly eyes (meeting cards, menus)
-export function drawPuddleIcon(g, cx, cy, s, color, dead = false) {
+export function drawPuddleIcon(g, cx, cy, s, color, dead = false, cos = null) {
   g.save();
   g.shadowColor = color; g.shadowBlur = s * 0.6;
   const body = g.createLinearGradient(cx, cy - s, cx, cy + s * 0.6);
@@ -223,6 +241,7 @@ export function drawPuddleIcon(g, cx, cy, s, color, dead = false) {
   }
   if (dead) { g.strokeStyle = '#ff3b3b'; g.lineWidth = s * 0.12; g.beginPath(); g.moveTo(cx - s * 0.8, cy - s * 0.7); g.lineTo(cx + s * 0.8, cy + s * 0.7); g.stroke(); }
   g.restore();
+  drawCos2D(g, cx, cy, s, cos, dead);
 }
 
 export { dropGeo };

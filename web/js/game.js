@@ -1,5 +1,6 @@
 // Rules + computer puddles. No three.js here: the main loop reads positions and events from this.
 import { MAPS, buildMap, roomName, COLORS, TASK_NAMES, rng } from './maps.js';
+import { randomCos, cleanCos } from './cosdata.js';
 
 export const SPEED = 4.2, RAD = 0.3, KILL_R = 1.7, REPORT_R = 2.8, USE_R = 1.45, VENT_R = 1.0;
 export const VIS = 7.5, VIS_LOW = 2.6, VIS_IMP = 10.5;
@@ -15,14 +16,14 @@ export class Game {
     this.meetingN = 0; this.winner = null;
     const R = this.R, M = this.map;
     // humans first (online games have several), then computer puddles in the colours nobody picked
-    const humans = o.humans || [{ name: o.name, color: o.color }];
+    const humans = o.humans || [{ name: o.name, color: o.color, cos: o.cos }];
     const cols = COLORS.map((c, i) => i).filter(i => !humans.some(h => h.color === i)).sort(() => R() - 0.5);
     const names = BOT_NAMES.slice().sort(() => R() - 0.5);
     this.players = [];
     const total = Math.max(o.count, humans.length);
     for (let i = 0; i < total; i++) {
       const hu = humans[i], ci = hu ? hu.color : cols[i - humans.length];
-      this.players.push({ id: i, human: !!hu, name: hu ? (hu.name || COLORS[ci].name) : COLORS[ci].name, nick: hu ? hu.name : names[i], color: COLORS[ci].hex, colorName: COLORS[ci].name,
+      this.players.push({ id: i, human: !!hu, name: hu ? (hu.name || COLORS[ci].name) : COLORS[ci].name, nick: hu ? hu.name : names[i], color: COLORS[ci].hex, colorName: COLORS[ci].name, cos: hu ? cleanCos(hu.cos) : randomCos(R),
         imp: false, alive: true, x: 0, z: 0, vx: 0, vz: 0, face: 0, tasks: [], done: new Set(), meetings: 1, killCd: 12, inVent: -1, holding: -1, voted: null, ai: null, room: '' });
     }
     // roles

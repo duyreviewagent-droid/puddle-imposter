@@ -21,8 +21,10 @@ export const MAPS = [
       ['Storage', 10, 48, 12, 10, ['mop', 'swipe']],
       ['Lab', 36, 48, 14, 10, ['code', 'coolant']],
       ['Boiler Room', 62, 48, 12, 10, ['valve', 'filter']],
+      ['Settling Ponds', 36, 67, 28, 12, ['filter', 'mop', 'valve'], true],
+      ['Loading Yard', 88, 29, 14, 22, ['swipe', 'upload'], true],
     ],
-    links: [['Mess Hall', 'Reservoir'], ['Mess Hall', 'Filtration'], ['Mess Hall', 'Control Room'], ['Reservoir', 'Electrical'],
+    links: [['Lab', 'Settling Ponds'], ['Storage', 'Settling Ponds'], ['Pump Room', 'Loading Yard'], ['Mess Hall', 'Reservoir'], ['Mess Hall', 'Filtration'], ['Mess Hall', 'Control Room'], ['Reservoir', 'Electrical'],
       ['Electrical', 'Storage'], ['Storage', 'Lab'], ['Lab', 'Boiler Room'], ['Boiler Room', 'Pump Room'], ['Pump Room', 'Filtration'],
       ['Control Room', 'Lab'], ['Electrical', 'Control Room']],
     button: 'Mess Hall', lights: 'Electrical', cool: ['Pump Room', 'Boiler Room'],
@@ -40,8 +42,10 @@ export const MAPS = [
       ['Garage', 14, 50, 14, 10, ['mop', 'wires']],
       ['Comms', 40, 46, 12, 8, ['swipe', 'upload']],
       ['Heat Exchanger', 68, 50, 12, 10, ['valve', 'filter']],
+      ['Ice Field', 40, 68, 30, 14, ['valve', 'mop', 'filter'], true],
+      ['Helipad', 94, 30, 16, 16, ['upload', 'swipe'], true],
     ],
-    links: [['Basecamp', 'Greenhouse'], ['Basecamp', 'Generator'], ['Basecamp', 'Cryo Vault'], ['Basecamp', 'Comms'],
+    links: [['Comms', 'Ice Field'], ['Heat Exchanger', 'Ice Field'], ['Cryo Vault', 'Helipad'], ['Basecamp', 'Greenhouse'], ['Basecamp', 'Generator'], ['Basecamp', 'Cryo Vault'], ['Basecamp', 'Comms'],
       ['Ice Core Lab', 'Greenhouse'], ['Greenhouse', 'Telescope'], ['Telescope', 'Cryo Vault'], ['Ice Core Lab', 'Generator'],
       ['Generator', 'Garage'], ['Garage', 'Comms'], ['Comms', 'Heat Exchanger'], ['Heat Exchanger', 'Cryo Vault']],
     button: 'Basecamp', lights: 'Generator', cool: ['Heat Exchanger', 'Cryo Vault'],
@@ -58,8 +62,10 @@ export const MAPS = [
       ['Barracks', 26, 54, 14, 10, ['mop', 'swipe']],
       ['Magma Pump', 12, 36, 12, 12, ['valve', 'coolant']],
       ['Electrical', 14, 14, 12, 10, ['wires', 'swipe']],
+      ['Lava Fields', 40, 74, 34, 12, ['valve', 'coolant', 'filter'], true],
+      ['Crater Rim', 92, 36, 14, 22, ['code', 'upload'], true],
     ],
-    links: [['Command', 'Thermal Lab'], ['Thermal Lab', 'Turbines'], ['Turbines', 'Refinery'], ['Refinery', 'Barracks'],
+    links: [['Barracks', 'Lava Fields'], ['Refinery', 'Lava Fields'], ['Turbines', 'Crater Rim'], ['Command', 'Thermal Lab'], ['Thermal Lab', 'Turbines'], ['Turbines', 'Refinery'], ['Refinery', 'Barracks'],
       ['Barracks', 'Magma Pump'], ['Magma Pump', 'Electrical'], ['Electrical', 'Command'],
       ['Drill Core', 'Command'], ['Drill Core', 'Turbines'], ['Drill Core', 'Barracks'], ['Drill Core', 'Magma Pump']],
     button: 'Drill Core', lights: 'Electrical', cool: ['Turbines', 'Magma Pump'],
@@ -77,8 +83,10 @@ export const MAPS = [
       ['Massage', 12, 50, 12, 10, ['swipe', 'mop']],
       ['Reception', 36, 50, 16, 8, ['upload', 'swipe']],
       ['Locker Room', 62, 50, 12, 10, ['code', 'upload']],
+      ['Zen Garden', 90, 31, 18, 22, ['mop', 'filter', 'code'], true],
+      ['Outdoor Bath', 36, 68, 26, 12, ['coolant', 'valve'], true],
     ],
-    links: [['Lounge', 'Sauna'], ['Lounge', 'Laundry'], ['Lounge', 'Boiler'], ['Lounge', 'Reception'], ['Hot Spring', 'Sauna'],
+    links: [['Boiler', 'Zen Garden'], ['Cold Plunge', 'Zen Garden'], ['Reception', 'Outdoor Bath'], ['Lounge', 'Sauna'], ['Lounge', 'Laundry'], ['Lounge', 'Boiler'], ['Lounge', 'Reception'], ['Hot Spring', 'Sauna'],
       ['Sauna', 'Cold Plunge'], ['Hot Spring', 'Laundry'], ['Cold Plunge', 'Boiler'], ['Laundry', 'Massage'], ['Massage', 'Reception'],
       ['Reception', 'Locker Room'], ['Locker Room', 'Boiler']],
     button: 'Lounge', lights: 'Boiler', cool: ['Sauna', 'Cold Plunge'],
@@ -96,14 +104,23 @@ export const MAPS = [
       ['Water Tanks', 22, 38, 10, 10, ['coolant', 'filter']],
       ['Port Engine', 6, 10, 10, 10, ['valve', 'wires']],
       ['Starboard Engine', 6, 38, 10, 10, ['wires', 'valve']],
+      ['Top Deck', 38, 64, 44, 12, ['mop', 'valve', 'swipe'], true],
+      ['Bow Deck', 98, 24, 14, 20, ['upload', 'filter'], true],
     ],
-    links: [['Bridge', 'Navigation'], ['Bridge', 'Ballast Tanks'], ['Galley', 'Navigation'], ['Galley', 'Ballast Tanks'],
+    links: [['Cargo Hold', 'Top Deck'], ['Starboard Engine', 'Top Deck'], ['Bridge', 'Bow Deck'], ['Bridge', 'Navigation'], ['Bridge', 'Ballast Tanks'], ['Galley', 'Navigation'], ['Galley', 'Ballast Tanks'],
       ['Galley', 'Electrical'], ['Galley', 'Water Tanks'], ['Galley', 'Cargo Hold'], ['Electrical', 'Port Engine'],
       ['Water Tanks', 'Starboard Engine'], ['Port Engine', 'Starboard Engine'], ['Cargo Hold', 'Ballast Tanks']],
     button: 'Galley', lights: 'Electrical', cool: ['Port Engine', 'Ballast Tanks'],
     vents: [['Port Engine', 'Starboard Engine'], ['Electrical', 'Water Tanks', 'Cargo Hold'], ['Navigation', 'Bridge', 'Ballast Tanks']],
   },
 ];
+
+// the walk-around courtyard where online players wait for the host
+export const LOBBY = {
+  id: 9, name: 'The Courtyard', sub: 'Lobby', theme: 'yard',
+  rooms: [['Courtyard', 20, 16, 34, 26, [], true]],
+  links: [], button: 'Courtyard', lights: 'Courtyard', cool: ['Courtyard', 'Courtyard'], vents: [],
+};
 
 export const COLORS = [
   { name: 'Red', hex: '#ff2a2a' }, { name: 'Blue', hex: '#2a6bff' }, { name: 'Lime', hex: '#5dff3a' }, { name: 'Pink', hex: '#ff4fd2' },
@@ -119,7 +136,7 @@ export function rng(seed) {
 const PAD = 3;
 export function buildMap(def) {
   const R = rng(1234 + def.id * 77);
-  const rooms = def.rooms.map(([name, x, z, w, d, tasks], i) => ({ i, name, x: x + PAD, z: z + PAD, w, d, tasks, x0: x + PAD - w / 2, z0: z + PAD - d / 2, x1: x + PAD + w / 2, z1: z + PAD + d / 2 }));
+  const rooms = def.rooms.map(([name, x, z, w, d, tasks, out], i) => ({ i, name, out: !!out, x: x + PAD, z: z + PAD, w, d, tasks, x0: x + PAD - w / 2, z0: z + PAD - d / 2, x1: x + PAD + w / 2, z1: z + PAD + d / 2 }));
   const byName = n => { const r = rooms.find(r => r.name === n); if (!r) throw new Error('no room ' + n); return r; };
   let W = 0, H = 0;
   for (const r of rooms) { W = Math.max(W, r.x1 + PAD); H = Math.max(H, r.z1 + PAD); }
@@ -210,7 +227,7 @@ export function buildMap(def) {
     return keyCells().every(([i, j]) => seen[idx(i, j)]);
   };
   for (const r of rooms) {
-    const n = Math.round(r.w * r.d / 22);
+    const n = Math.round(r.w * r.d / (def.theme === 'yard' ? 34 : r.out ? 18 : 14));
     for (let k = 0; k < n; k++) {
       const s = takeSlot(r, [['w', 'e', 's', 'n'][Math.floor(R() * 4)], 'w', 'e', 's']);
       if (!s) break;

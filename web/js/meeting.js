@@ -153,3 +153,22 @@ export function count(g) {
 export function coolDown(g) {
   for (const p of g.players) if (p.ai) for (let i = 0; i < g.n; i++) if (p.ai.sus[i] < 90) p.ai.sus[i] *= 0.55;
 }
+
+// typed chat: work out who a message is about and what it claims, so the computer puddles can react
+export function parseSay(g, pid, text) {
+  const t = ' ' + String(text).toLowerCase().replace(/[^a-z0-9 ]/g, ' ') + ' ';
+  let target = null;
+  for (const p of g.players) {
+    if (p.id === pid || !p.alive) continue;
+    for (const n of [p.name, p.colorName]) if (n && t.includes(' ' + n.toLowerCase() + ' ')) { target = p.id; break; }
+    if (target != null) break;
+  }
+  let kind = null;
+  if (/ where /.test(t)) kind = 'where';
+  if (target != null) {
+    if (/vent/.test(t)) kind = 'vent';
+    else if (/ (safe|with|clear|innocent|trust|not (him|her|them|it)|wasn t|wasnt) /.test(t)) kind = 'with';
+    else if (/(sus|kill|imposter|impostor|imp |vote|did it|saw|liar|lying|faking|fake)/.test(t)) kind = 'accuse';
+  }
+  return { kind, target };
+}

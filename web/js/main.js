@@ -6,12 +6,13 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Game, SPEED, USE_R } from './game.js';
-import { MAPS, COLORS, TASK_NAMES, buildMap, roomName } from './maps.js';
+import { MAPS, COLORS, TASK_NAMES, buildMap, roomName, LOBBY } from './maps.js';
+import { HATS, SHIRTS, PETS, buildPet, updatePet, cleanCos, shirtCanvas } from './cosmetics.js';
 import { World, THEMES } from './world.js';
 import { Puddle, drawPuddleIcon, setEnv } from './puddle.js';
 import { LavaPit } from './eject.js';
 import { openTask } from './tasks.js';
-import { planChat, humanSays, sayText, botVote, count, coolDown } from './meeting.js';
+import { planChat, humanSays, sayText, parseSay, botVote, count, coolDown } from './meeting.js';
 import { initAudio, sfx, setMood, setMusic, setSfx, audio } from './audio.js';
 
 const Q = new URLSearchParams(location.search);
@@ -43,8 +44,9 @@ const lava = new LavaPit();
 lava.scene.environment = env; lava.scene.environmentIntensity = 0.25;
 
 // ------------------------------------------------------------------ settings + stats
-const DEF = { mapId: -1, role: 'random', imps: 2, count: 10, killCd: 25, smarts: 1, tasksPer: 6, color: 1, name: '' };
+const DEF = { mapId: -1, role: 'random', imps: 2, count: 10, killCd: 25, smarts: 1, tasksPer: 6, color: 1, name: '', cos: { hat: 'none', shirt: 'none', pet: 'none' } };
 const settings = { ...DEF, ...LS.get('pi.settings', {}) };
+settings.cos = cleanCos(settings.cos);
 const stats = { games: 0, wins: 0, crewWins: 0, impWins: 0, dunked: 0, ...LS.get('pi.stats', {}) };
 const maxImps = n => n <= 6 ? 1 : n <= 8 ? 2 : 3;
 function save(flash) {
@@ -104,22 +106,24 @@ $('b-resume').onclick = () => { $('scr-pause').classList.add('hidden'); S = 'pla
 addEventListener('pointerdown', () => { initAudio(); if (S === 'title') setMood('title'); }, { once: true });
 
 // ------------------------------------------------------------------ game state
-let S = 'title', game = null, world = null, models = [], bodyModels = new Map(), taskPanel = null, stateT = 0, killedFx = null;
+let pets = [], S = 'title', game = null, world = null, models = [], bodyModels = new Map(), taskPanel = null, stateT = 0, killedFx = null;
 let camPos = new THREE.Vector3(), visR = 7.5, stepAcc = 0, heatBeep = 0, lastRoom = '', roomT = 0, endT = -1, dripCd = 0;
 let me = 0, NET = null;          // NET is set while playing online
 const H = () => game.players[me];
+const CAM = { y: 12.2, z: 7.7 };      // a little closer than before
 
 function disposeScene(sc) {
   sc.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { const m = Array.isArray(o.material) ? o.material : [o.material]; m.forEach(x => { for (const k in x) if (x[k] && x[k].isTexture) x[k].dispose(); x.dispose(); }); } });
 }
 function toTitle() {
+  dctx.clearRect(0, 0, dark.width, dark.height);
   if (taskPanel) taskPanel.close();
   S = 'title'; hideAll(); $('scr-title').classList.remove('hidden');
   lava.stop(); lava.showTitle(COLORS.slice(0, 7).map(c => c.hex));
   renderPass.scene = lava.scene; renderPass.camera = lava.camera;
   setMood('title'); buildTitle();
 }
-function hideAll() { for (const id of ['scr-online', 'scr-lobby', 'scr-title', 'scr-role', 'hud', 'scr-alert', 'scr-meeting', 'scr-end', 'eject-txt', 'bigmap', 'scr-pause', 'scr-help']) $(id).classList.add('hidden'); }
+function hideAll() { for (const id of ['scr-wardrobe', 'scr-online', 'scr-lobby', 'scr-title', 'scr-role', 'hud', 'scr-alert', 'scr-meeting', 'scr-end', 'eject-txt', 'bigmap', 'scr-pause', 'scr-help']) $(id).classList.add('hidden'); }
 
 function startGame() {
   initAudio(); save();
@@ -127,7 +131,7 @@ function startGame() {
   me = 0;
   const mapId = Q.has('map') ? +Q.get('map') : settings.mapId >= 0 ? settings.mapId : Math.floor(Math.random() * MAPS.length);
   const role = Q.get('role') || settings.role;
-  game = new Game({ mapId, role, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer, color: settings.color, name: settings.name || COLORS[settings.color].name });
+  game = new Game({ mapId, role, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer, color: settings.color, cos: settings.cos, name: settings.name || COLORS[settings.color].name });
   setupGame();
 }
 function setupGame() {
@@ -137,12 +141,13 @@ function setupGame() {
   const h = H();
   models = game.players.map(p => {
     const lc = h.imp && p.imp ? '#ff3a2a' : null;
-    const pd = new Puddle(p.color, p.name, world, lc); world.scene.add(pd.group); return pd;
+    const pd = new Puddle(p.color, p.name, world, lc); pd.setCos(p.cos); world.scene.add(pd.group); return pd;
   });
+  pets = game.players.map(p => { if (!p.cos || p.cos.pet === 'none') return null; const pet = buildPet(p.cos.pet); world.scene.add(pet); return pet; });
   bodyModels = new Map(); killedFx = null; endT = -1; visR = game.vision(h);
   lava.stop();
   renderPass.scene = world.scene; renderPass.camera = world.camera;
-  camPos.set(h.x, 15, h.z + 9.5);
+  camPos.set(h.x, CAM.y, h.z + CAM.z);
   // role reveal
   hideAll(); S = 'intro'; stateT = 0;
   $('scr-role').classList.remove('hidden');
@@ -153,7 +158,7 @@ function setupGame() {
   const team = h.imp ? game.players.filter(p => p.imp) : game.players;
   const rc = $('role-team'), g = rc.getContext('2d'); g.clearRect(0, 0, rc.width, rc.height);
   const n = team.length, sp = Math.min(120, 1000 / n);
-  team.forEach((p, i) => { const x = rc.width / 2 + (i - (n - 1) / 2) * sp, s = p.id === me ? 70 : 52; drawPuddleIcon(g, x, 170 - (p.id === me ? 10 : 0), s, p.color); g.font = '700 18px "Avenir Next", sans-serif'; g.fillStyle = h.imp ? '#ff6a5a' : '#fff'; g.textAlign = 'center'; g.fillText(p.name, x, 270); });
+  team.forEach((p, i) => { const x = rc.width / 2 + (i - (n - 1) / 2) * sp, s = p.id === me ? 70 : 52; drawPuddleIcon(g, x, 170 - (p.id === me ? 10 : 0), s, p.color, false, p.cos); g.font = '700 18px "Avenir Next", sans-serif'; g.fillStyle = h.imp ? '#ff6a5a' : '#fff'; g.textAlign = 'center'; g.fillText(p.name, x, 270); });
   if (h.imp) sfx.imposterReveal(); else sfx.crewReveal();
   setMood('play');
   buildTaskList(); drawMinimapBase();
@@ -286,7 +291,7 @@ function handleEvents() {
       $('hud').classList.add('hidden'); $('scr-alert').classList.remove('hidden');
       $('alert-txt').innerHTML = e.type === 'report' ? 'DEAD BODY<br>REPORTED' : 'EMERGENCY<br>MEETING';
       const c = $('alert-c'), g = c.getContext('2d'); g.clearRect(0, 0, 600, 300);
-      drawPuddleIcon(g, e.type === 'report' ? 200 : 300, 150, 90, game.players[e.by].color);
+      drawPuddleIcon(g, e.type === 'report' ? 200 : 300, 150, 90, game.players[e.by].color, false, game.players[e.by].cos);
       if (e.type === 'report') drawPuddleIcon(g, 420, 170, 80, game.players[e.body].color, true);
       if (e.type === 'report') sfx.report(); else sfx.emergency();
       setMood(null);
@@ -306,7 +311,7 @@ function handleEvents() {
 
 // ------------------------------------------------------------------ meeting
 let MT = null;
-function cardIcon(p, dead, size = 62) { const c = document.createElement('canvas'); c.width = c.height = size * 2; drawPuddleIcon(c.getContext('2d'), size, size * 1.08, size * 0.8, p.color, dead); return c; }
+function cardIcon(p, dead, size = 62) { const c = document.createElement('canvas'); c.width = c.height = size * 2; drawPuddleIcon(c.getContext('2d'), size, size * 1.08, size * 0.8, p.color, dead, p.cos); return c; }
 function startMeeting() {
   S = 'meeting'; stateT = 0;
   $('scr-alert').classList.add('hidden'); $('scr-meeting').classList.remove('hidden');
@@ -319,7 +324,7 @@ function startMeeting() {
   $('m-sub').textContent = M.body >= 0 ? `${by.name} reported ${game.players[M.body].name}'s body in ${M.room}` : `${by.name} called an emergency meeting`;
   $('m-skip').classList.remove('sel'); $('m-skipvotes').innerHTML = '';
   $('m-hint').textContent = h.alive ? 'Click a puddle to accuse or vouch for them' : 'Ghosts can watch, but nobody can hear you';
-  document.querySelector('.mquick').style.display = h.alive ? '' : 'none';
+  document.querySelector('.mquick').style.display = h.alive ? '' : 'none'; document.querySelector('.mchat .mtype').style.display = h.alive ? '' : 'none'; $('m-input').value = '';
   $('m-skip').style.display = h.alive ? '' : 'none';
   buildCards();
   setMood('meeting');
@@ -422,7 +427,7 @@ function startEject(r) {
   S = 'eject'; stateT = 0;
   $('scr-meeting').classList.add('hidden'); $('scr-alert').classList.add('hidden'); $('hud').classList.add('hidden'); $('scr-role').classList.add('hidden');
   renderPass.scene = lava.scene; renderPass.camera = lava.camera;
-  lava.startEject(ej ? { color: ej.color } : null);
+  lava.startEject(ej ? { color: ej.color, cos: ej.cos } : null);
   setMood('lava');
   const left = NET ? r.left : game.impAlive();
   const l1 = ej ? `${ej.name} was ${ej.imp ? 'An Imposter.' : 'not An Imposter.'}` : `No one was ejected. ${r.tie ? '(Tie)' : '(Skipped)'}`;
@@ -446,7 +451,7 @@ function updateEject(dt) {
     if (game.winner) { showEnd(); return; }
     S = 'play'; renderPass.scene = world.scene; renderPass.camera = world.camera;
     $('hud').classList.remove('hidden'); setMood('play'); buildTaskList();
-    const h = H(); camPos.set(h.x, 15, h.z + 9.5);
+    const h = H(); camPos.set(h.x, CAM.y, h.z + CAM.z);
     if (!h.alive) { $('ghostnote').classList.remove('hidden'); $('ghostmsg').textContent = h.imp ? 'your partner has to finish the job.' : 'finish your tasks to help the crew win!'; }
   }
 }
@@ -481,7 +486,8 @@ function frame(now) {
   frames++; fpsT += dt; if (fpsT > 1) { fps = frames / fpsT; frames = 0; fpsT = 0; if (Q.has('dbg')) document.title = `${fps.toFixed(0)} fps`; }
   stateT += dt; dripCd -= dt;
   const aspect = innerWidth / innerHeight;
-  if (S === 'title') lava.update(dt, aspect);
+  if (S === 'title' || S === 'online' || S === 'wardrobe') lava.update(dt, aspect);
+  else if (S === 'lobby') lobbyUpdate(dt, aspect);
   else if (S === 'eject') { lava.update(dt, aspect); updateEject(dt); }
   else if (game && world) {
     if (S === 'intro' && stateT > (Q.has('auto') ? 0.5 : 4.2)) { S = 'play'; $('scr-role').classList.add('hidden'); $('hud').classList.remove('hidden'); }
@@ -558,6 +564,7 @@ function playUpdate(dt) {
     }
   } else { $('heatfx').style.opacity = 0; if (bannerT <= 0) $('banner').classList.add('hidden'); }
   drawMap($('minimap'), false);
+  roleCard();
 }
 
 function drawWorld(dt, aspect) {
@@ -565,7 +572,8 @@ function drawWorld(dt, aspect) {
   const target = game.vision(h);
   visR += (target - visR) * Math.min(1, dt * 1.6);
   const heat = game.sab && game.sab.type === 'heat';
-  world.update(dt, h, { lightsOut: game.sab && game.sab.type === 'lights', heat });
+  const hr = game.map.rooms.find(r => r.name === h.room);
+  world.update(dt, h, { lightsOut: game.sab && game.sab.type === 'lights', heat, outdoor: !!(hr && hr.out) });
   // characters
   game.players.forEach((p, i) => {
     const pd = models[i];
@@ -576,6 +584,7 @@ function drawWorld(dt, aspect) {
     pd.melt = heat ? 1.2 : 0;
     pd.group.position.set(p.x, p.alive ? 0 : 0.35 + Math.sin(t * 2 + i) * 0.12, p.z);
     if (vis) pd.update(dt, t, p.vx, p.vz, p.face);
+    if (pets[i]) updatePet(pets[i], p, dt, t, vis && p.alive);
   });
   for (const [id, b] of bodyModels) { const bd = game.bodies.find(x => x.pid === id); b.group.visible = !!bd && humanSees(b.group.position.x, b.group.position.z); if (b.group.visible) b.update(dt, t, 0, 0, b.heading); }
   // task / fix markers
@@ -585,7 +594,7 @@ function drawWorld(dt, aspect) {
   world.hideMarkers(k);
   // camera
   const C = world.camera; C.aspect = aspect; C.fov = aspect < 1.2 ? 52 : 38;
-  let off = new THREE.Vector3(0, 15, 9.5);
+  let off = new THREE.Vector3(0, CAM.y, CAM.z);
   if (S === 'intro') off.set(0, 9 + stateT * 1.4, 6 + stateT * 0.85);
   if (killedFx && killedFx.t < 2.4) { const k2 = Math.sin(Math.min(1, killedFx.t / 2.4) * Math.PI); off.lerp(new THREE.Vector3(0, 5, 4), k2); }
   const want = new THREE.Vector3(h.x, 0, h.z).add(off);
@@ -626,6 +635,173 @@ function drawDark() {
 }
 
 
+
+// ------------------------------------------------------------------ role card (bottom-left): your goal + abilities with cooldowns
+let rcKey = '';
+function roleCard() {
+  const h = H(), o = game.o, card = $('rolecard');
+  const ready = (v, max) => v > 0 ? `<b class="cd">${Math.ceil(v)}s</b>` : '<b class="rd">ready</b>';
+  let role, goal, ab;
+  if (!h.alive) {
+    role = h.imp ? '👻 IMPOSTER GHOST' : '👻 GHOST';
+    goal = h.imp ? 'You can still sabotage. Your partners finish the job.' : 'Float through walls and finish your tasks — the crew still needs them.';
+    ab = h.imp ? `<div class="ab"><span>☠ Sabotage [1 / 2]</span>${game.sab ? '<b class="cd">active</b>' : ready(game.sabCd)}</div>` : `<div class="ab"><span>✋ Do tasks [E]</span><b class="rd">${h.tasks.filter(t => !h.done.has(t)).length} left</b></div>`;
+  } else if (h.imp) {
+    role = '🟥 IMPOSTER';
+    goal = 'Evaporate crewmates until imposters equal the crew. Don\'t get caught.';
+    ab = `<div class="ab"><span>💧 Kill [Q]</span>${ready(h.killCd)}</div><div class="ab"><span>▦ Vent [V]</span><b class="rd">${h.inVent >= 0 ? 'inside' : 'ready'}</b></div><div class="ab"><span>☠ Sabotage [1 lights / 2 heat]</span>${game.sab ? '<b class="cd">active</b>' : ready(game.sabCd)}</div><div class="ab"><span>📣 Report [R] · 🔴 Meeting</span><b class="rd">${h.meetings} left</b></div>`;
+  } else {
+    role = '🟦 CREWMATE';
+    goal = 'Finish your tasks, or find the imposters and vote them into the lava.';
+    ab = `<div class="ab"><span>✋ Use / tasks [E]</span><b class="rd">${h.tasks.filter(t => !h.done.has(t)).length} left</b></div><div class="ab"><span>📣 Report body [R]</span><b class="rd">ready</b></div><div class="ab"><span>🔴 Emergency button</span>${h.meetings > 0 ? (game.buttonCd > 0 ? ready(game.buttonCd) : `<b class="rd">${h.meetings} left</b>`) : '<b class="cd">used</b>'}</div>`;
+  }
+  const key = role + ab;
+  if (key !== rcKey) { rcKey = key; $('rc-role').textContent = role; $('rc-goal').textContent = goal; $('rc-abil').innerHTML = ab; card.className = !h.alive ? 'ghost' : h.imp ? 'imp' : ''; }
+  $('a-kill').style.setProperty('--cd', h.imp ? Math.max(0, h.killCd / o.killCd) : 0);
+  $('a-sab').style.setProperty('--cd', game.sab ? 1 : Math.max(0, Math.min(1, game.sabCd / 35)));
+}
+
+// ------------------------------------------------------------------ wardrobe: hats, shirts and pets
+let wardTab = 'hat', wardFrom = 'title';
+function sendMe() { nsend({ t: 'me', name: settings.name || COLORS[settings.color].name, color: settings.color, cos: settings.cos }); }
+function openWardrobe(from) {
+  initAudio(); wardFrom = from;
+  $('scr-wardrobe').classList.remove('hidden');
+  if (from === 'title') { $('scr-title').classList.add('hidden'); S = 'wardrobe'; lava.showWardrobe(COLORS[settings.color].hex, settings.cos); renderPass.scene = lava.scene; renderPass.camera = lava.camera; }
+  else { $('scr-lobby').classList.add('hidden'); lobbyWard = true; }
+  buildWardrobe();
+}
+function closeWardrobe() {
+  $('scr-wardrobe').classList.add('hidden'); save();
+  if (wardFrom === 'title') toTitle(); else { lobbyWard = false; $('scr-lobby').classList.remove('hidden'); }
+}
+function buildWardrobe() {
+  for (const b of document.querySelectorAll('.wtabs b')) { b.classList.toggle('on', b.dataset.t === wardTab); b.onclick = () => { wardTab = b.dataset.t; sfx.blip(); buildWardrobe(); }; }
+  const list = wardTab === 'hat' ? HATS : wardTab === 'shirt' ? SHIRTS : PETS, box = $('w-items'); box.innerHTML = '';
+  for (const it of list) {
+    const d = document.createElement('div'); d.className = 'wi' + (settings.cos[wardTab] === it.id ? ' sel' : '');
+    if (wardTab === 'shirt') { if (it.id === 'none') d.innerHTML = '<div class="em">🚫</div>'; else { const c = shirtCanvas(it.id); c.style.cssText = ''; d.append(c); } }
+    else d.innerHTML = `<div class="em">${it.emoji || '🚫'}</div>`;
+    d.insertAdjacentHTML('beforeend', `<div>${it.name}</div>`);
+    d.onclick = () => { settings.cos = { ...settings.cos, [wardTab]: it.id }; sfx.blip(1200); applyCos(); buildWardrobe(); };
+    box.append(d);
+  }
+}
+function applyCos() {
+  save();
+  if (wardFrom === 'title') lava.showWardrobe(COLORS[settings.color].hex, settings.cos);
+  if (ws && ws.readyState === 1) sendMe();
+}
+$('b-ward').onclick = () => openWardrobe('title');
+$('w-done').onclick = () => closeWardrobe();
+$('lb-ward').onclick = () => openWardrobe('lobby');
+
+// ------------------------------------------------------------------ walk-around courtyard lobby (online)
+let lobbyMap = null, lobbyWorld = null, lobbyCol = null, lobbyWard = false, lposT = 0;
+const lobbyModels = new Map(), lobbyMe = { x: 0, z: 0, vx: 0, vz: 0, face: 0 };
+function enterLobbyWorld() {
+  if (!lobbyWorld) {
+    lobbyMap = buildMap(LOBBY);
+    lobbyWorld = new World(); lobbyWorld.build(lobbyMap, env, { lobby: true });
+    lobbyCol = Object.create(Game.prototype); lobbyCol.map = lobbyMap;
+    const b = lobbyMap.button, a = Math.random() * Math.PI * 2;
+    lobbyMe.x = b.x + Math.sin(a) * 4; lobbyMe.z = b.z + Math.cos(a) * 4; lobbyMe.face = a;
+    camPos.set(lobbyMe.x, CAM.y, lobbyMe.z + CAM.z);
+  }
+  renderPass.scene = lobbyWorld.scene; renderPass.camera = lobbyWorld.camera;
+  dctx.clearRect(0, 0, dark.width, dark.height);
+  syncLobbyModels();
+}
+function syncLobbyModels() {
+  if (!lobbyWorld || !lobbyState) return;
+  const seen = new Set();
+  for (const p of lobbyState.players) {
+    seen.add(p.id);
+    const key = p.name + p.color + JSON.stringify(p.cos);
+    let L = lobbyModels.get(p.id);
+    if (L && L.key !== key) { lobbyWorld.scene.remove(L.pd.group); L.pd.dispose(); if (L.pet) lobbyWorld.scene.remove(L.pet); L = null; }
+    if (!L) {
+      const pd = new Puddle(COLORS[p.color].hex, p.name + (p.id === lobbyState.host ? ' 👑' : ''), lobbyWorld); pd.setCos(p.cos); lobbyWorld.scene.add(pd.group);
+      const pet = p.cos && p.cos.pet !== 'none' ? buildPet(p.cos.pet) : null; if (pet) lobbyWorld.scene.add(pet);
+      const old = lobbyModels.get(p.id);
+      L = { key, pd, pet, x: old ? old.x : lobbyMe.x, z: old ? old.z : lobbyMe.z, tx: null, tz: null, vx: 0, vz: 0, face: 0 };
+      if (p.id !== myNetId) { const b = lobbyMap.button, a = p.id * 2.1; L.x = b.x + Math.sin(a) * 4; L.z = b.z + Math.cos(a) * 4; }
+      lobbyModels.set(p.id, L);
+    }
+  }
+  for (const [id, L] of lobbyModels) if (!seen.has(id)) { lobbyWorld.scene.remove(L.pd.group); L.pd.dispose(); if (L.pet) lobbyWorld.scene.remove(L.pet); lobbyModels.delete(id); }
+}
+function lobbyUpdate(dt, aspect) {
+  if (!lobbyWorld) return;
+  const me = lobbyMe;
+  let mx = 0, mz = 0;
+  const typing = document.activeElement && document.activeElement.tagName === 'INPUT';
+  if (!lobbyWard && !typing) {
+    if (keys.has('KeyW') || keys.has('ArrowUp')) mz -= 1; if (keys.has('KeyS') || keys.has('ArrowDown')) mz += 1;
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) mx -= 1; if (keys.has('KeyD') || keys.has('ArrowRight')) mx += 1;
+  }
+  const len = Math.hypot(mx, mz);
+  if (len) {
+    const ox = me.x, oz = me.z; lobbyCol.move(me, mx / len * SPEED * dt, mz / len * SPEED * dt);
+    me.vx = (me.x - ox) / dt; me.vz = (me.z - oz) / dt; me.face = Math.atan2(mx, mz);
+    stepAcc += Math.hypot(me.x - ox, me.z - oz); if (stepAcc > 0.9) { stepAcc = 0; sfx.step(0.8); }
+  } else { me.vx = me.vz = 0; }
+  lposT -= dt; if (lposT <= 0) { lposT = 1 / 12; nsend({ t: 'lpos', x: +me.x.toFixed(2), z: +me.z.toFixed(2), f: +me.face.toFixed(2), vx: +me.vx.toFixed(2), vz: +me.vz.toFixed(2) }); }
+  const w = lobbyWorld, t = w.t, k = Math.min(1, dt * 12);
+  for (const [id, L] of lobbyModels) {
+    if (id === myNetId) { L.x = me.x; L.z = me.z; L.vx = me.vx; L.vz = me.vz; L.face = me.face; }
+    else if (L.tx != null) { L.x += (L.tx - L.x) * k; L.z += (L.tz - L.z) * k; }
+    L.pd.group.position.set(L.x, 0, L.z); L.pd.update(dt, t, L.vx, L.vz, L.face);
+    if (L.pet) updatePet(L.pet, L, dt, t, true);
+    if (L.bub) { L.bubT -= dt; if (L.bubT < 0) { L.pd.group.remove(L.bub); L.bub.material.map.dispose(); L.bub = null; } }
+  }
+  w.update(dt, me, { outdoor: true });
+  // wardrobe prompt
+  const nearW = w.wardrobe && Math.hypot(me.x - w.wardrobe.x, me.z - w.wardrobe.z) < 2.2;
+  $('lb-hint2') && ($('lb-hint2').style.opacity = nearW ? 1 : 0);
+  if (nearW && !lobbyWard && (keys.has('KeyE') || keys.has('Space'))) { keys.delete('KeyE'); keys.delete('Space'); openWardrobe('lobby'); }
+  const C = w.camera; C.aspect = aspect; C.fov = aspect < 1.2 ? 52 : 38;
+  const off = lobbyWard ? new THREE.Vector3(0, 4.2, 5.2) : new THREE.Vector3(0, CAM.y, CAM.z);
+  const tx = me.x + (lobbyWard ? 1.6 : 0);
+  camPos.lerp(new THREE.Vector3(tx, 0, me.z).add(off), Math.min(1, dt * 5));
+  C.position.copy(camPos); C.lookAt(camPos.x - off.x, lobbyWard ? 0.9 : 0.4, camPos.z - off.z); C.updateProjectionMatrix();
+}
+
+
+// ------------------------------------------------------------------ typing your own messages
+function sendTyped() {
+  const inp = $('m-input'), text = inp.value.trim().slice(0, 120); inp.value = '';
+  if (!text || S !== 'meeting' || !H().alive || (MT && MT.revealT >= 0)) return;
+  if (NET) { nsend({ t: 'say', kind: 'text', text }); return; }
+  chat(me, text);
+  const { kind, target } = parseSay(game, me, text);
+  if (kind) for (const r of humanSays(game, kind, target, me)) MT.replies.push({ at: MT.t + r.delay, pid: r.pid, text: r.text });
+}
+$('m-send').onclick = sendTyped;
+$('m-input').addEventListener('keydown', e => { e.stopPropagation(); if (e.code === 'Enter') sendTyped(); if (e.code === 'Escape') e.target.blur(); });
+function sendLobbyChat() { const inp = $('lb-input'), text = inp.value.trim().slice(0, 100); inp.value = ''; inp.blur(); if (text) nsend({ t: 'lchat', text }); }
+$('lb-send').onclick = sendLobbyChat;
+$('lb-input').addEventListener('keydown', e => { e.stopPropagation(); if (e.code === 'Enter') sendLobbyChat(); if (e.code === 'Escape') e.target.blur(); });
+addEventListener('keydown', e => { if (S === 'lobby' && !lobbyWard && e.code === 'KeyT' && document.activeElement !== $('lb-input')) { e.preventDefault(); $('lb-input').focus(); } });
+function bubble(text) {
+  const c = document.createElement('canvas'), g = c.getContext('2d'); const font = '700 34px "Avenir Next", sans-serif';
+  g.font = font; const words = text.split(' '), lines = []; let line = '';
+  for (const w of words) { if (g.measureText(line + w).width > 420 && line) { lines.push(line.trim()); line = ''; } line += w + ' '; } lines.push(line.trim());
+  const w = Math.min(480, Math.max(...lines.map(l => g.measureText(l).width))) + 40, h = lines.length * 42 + 30;
+  c.width = w; c.height = h + 18; g.font = font;
+  g.fillStyle = '#fff'; g.beginPath(); g.roundRect(2, 2, w - 4, h - 4, 18); g.fill(); g.beginPath(); g.moveTo(w / 2 - 14, h - 4); g.lineTo(w / 2, h + 14); g.lineTo(w / 2 + 14, h - 4); g.fill();
+  g.fillStyle = '#16202a'; g.textAlign = 'center'; g.textBaseline = 'middle'; lines.forEach((l, i) => g.fillText(l, w / 2, 30 + i * 42));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); sp.scale.set(c.width / 140, c.height / 140, 1); sp.renderOrder = 30;
+  return sp;
+}
+function lobbyBubble(id, text) {
+  const L = lobbyModels.get(id); if (!L) return;
+  if (L.bub) { L.pd.group.remove(L.bub); L.bub.material.map.dispose(); }
+  L.bub = bubble(text); L.bub.position.y = 2.5 + L.bub.scale.y / 2; L.pd.group.add(L.bub); L.bubT = 6;
+  sfx.blip(id === myNetId ? 1300 : 900, 0.5);
+}
+
 // ------------------------------------------------------------------ online
 // The server (server.js on Render) runs the real game; this page mirrors it, sends our moves and actions,
 // and draws everything the same way as solo.
@@ -638,7 +814,7 @@ function connect(then) {
   if (ws && ws.readyState === 0) { ws.addEventListener('open', () => then && then()); return; }
   netStatus('Connecting… (a sleeping server can take up to a minute to wake up)');
   try { ws = new WebSocket(SERVER.replace(/^http/, 'ws')); } catch { netStatus('Could not reach the server.', true); return; }
-  ws.onopen = () => { netStatus('Connected'); nsend({ t: 'me', name: settings.name || COLORS[settings.color].name, color: settings.color }); then && then(); };
+  ws.onopen = () => { netStatus('Connected'); sendMe(); then && then(); };
   ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch { return; } onNet(m); };
   ws.onclose = () => {
     ws = null;
@@ -654,8 +830,8 @@ function showOnline() {
 }
 function showLobby() {
   if (!lobbyState) { showOnline(); return; }
-  hideAll(); S = 'lobby'; $('scr-lobby').classList.remove('hidden');
-  renderPass.scene = lava.scene; renderPass.camera = lava.camera; setMood('title');
+  hideAll(); S = 'lobby'; $('scr-lobby').classList.remove('hidden'); lobbyWard = false;
+  enterLobbyWorld(); setMood('title');
   drawLobby();
 }
 function leaveOnline() { nsend({ t: 'leave' }); NET = null; lobbyState = null; if (taskPanel) taskPanel.close(); }
@@ -668,7 +844,7 @@ function drawLobby() {
   const box = $('lb-players'); box.innerHTML = '';
   for (const p of L.players) {
     const d = document.createElement('div'); d.className = 'lp';
-    const c = document.createElement('canvas'); c.width = c.height = 120; drawPuddleIcon(c.getContext('2d'), 60, 64, 40, COLORS[p.color].hex);
+    const c = document.createElement('canvas'); c.width = c.height = 120; drawPuddleIcon(c.getContext('2d'), 60, 68, 40, COLORS[p.color].hex, false, p.cos);
     d.append(c); d.insertAdjacentHTML('beforeend', `<div>${p.name}${p.id === myNetId ? ' (you)' : ''}${p.id === L.host ? ' 👑' : ''}</div>`);
     box.append(d);
   }
@@ -703,7 +879,7 @@ $('on-code').addEventListener('keydown', e => { if (e.code === 'Enter') $('on-jo
 
 function onNet(m) {
   switch (m.t) {
-    case 'hello': myNetId = m.id; if (wantJoin) { nsend({ t: 'me', name: settings.name || COLORS[settings.color].name, color: settings.color }); nsend({ t: 'join', code: wantJoin }); wantJoin = null; } break;
+    case 'hello': myNetId = m.id; if (wantJoin) { sendMe(); nsend({ t: 'join', code: wantJoin }); wantJoin = null; } break;
     case 'list': {
       const box = $('on-list'); box.innerHTML = '';
       if (!m.rooms.length) box.innerHTML = '<div class="empty">No public lobbies right now — create one!</div>';
@@ -716,7 +892,9 @@ function onNet(m) {
       break;
     }
     case 'err': netStatus(m.msg, true); if (S !== 'online' && S !== 'lobby') showOnline(); break;
-    case 'lobby': lobbyState = m; if (S === 'online' || S === 'lobby') showLobby(); break;
+    case 'lobby': lobbyState = m; if (S === 'online') showLobby(); else if (S === 'lobby') { drawLobby(); syncLobbyModels(); } break;
+    case 'lchat': if (S === 'lobby') lobbyBubble(m.id, m.text); break;
+    case 'ls': if (S === 'lobby') for (const [id, x, z, f, vx, vz] of m.p) { const L = lobbyModels.get(id); if (L && id !== myNetId) { L.tx = x; L.tz = z; L.face = f; L.vx = vx; L.vz = vz; } } break;
     case 'left': lobbyState = null; break;
     case 'start': startOnline(m); break;
     case 's': if (game && NET) applySnap(m); break;

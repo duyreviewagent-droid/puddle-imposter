@@ -2,6 +2,7 @@
 // Voted-out puddles walk the ledge, look down, jump in and boil away in a burst of steam.
 import * as THREE from 'three';
 import { Puddle } from './puddle.js';
+import { buildPet, updatePet, randomCos } from './cosmetics.js';
 import { sfx, lavaAmbience } from './audio.js';
 
 const NOISE = `
@@ -113,12 +114,20 @@ export class LavaPit {
       p.life = p.max = 1.5 + Math.random() * 2; p.s.scale.setScalar(0.5);
     }
   }
-  clearActors() { for (const a of this.actors) { this.scene.remove(a.pd.group); a.pd.dispose(); } this.actors = []; }
+  clearActors() { for (const a of this.actors) { this.scene.remove(a.pd.group); a.pd.dispose(); if (a.pet) this.scene.remove(a.pet); } this.actors = []; }
+  addPet(A, id) { if (!id || id === 'none') return; A.pet = buildPet(id); A.pet.scale.setScalar(0.9); this.scene.add(A.pet); A.petOwner = { x: 0, z: 0, face: 0 }; }
+  // wardrobe preview: just you, up close
+  showWardrobe(color, cos) {
+    this.clearActors(); this.mode = 'wardrobe'; this.t = 0;
+    const pd = new Puddle(color); pd.setGlow(true); pd.setCos(cos);
+    pd.group.position.set(-8, this.ledgeTop, 0.3); this.scene.add(pd.group);
+    const A = { pd, x: -8, face: 0.25 }; this.actors.push(A); this.addPet(A, cos && cos.pet);
+  }
   // title screen: a few puddles waiting on the ledge
   showTitle(colors) {
     this.clearActors(); this.mode = 'title'; this.t = 0;
     colors.forEach((c, i) => {
-      const pd = new Puddle(c); pd.setGlow(true);
+      const pd = new Puddle(c); pd.setGlow(true); pd.setCos(randomCos());
       const x = -12.5 + i * 1.45; pd.group.position.set(x, this.ledgeTop, (i % 2) * 0.5 - 0.25); pd.group.scale.setScalar(0.85);
       this.scene.add(pd.group); this.actors.push({ pd, x, face: Math.PI / 2 + (Math.random() - 0.5), turnT: Math.random() * 3 });
     });
@@ -128,9 +137,10 @@ export class LavaPit {
     this.clearActors(); this.mode = 'eject'; this.t = 0; this.done = false; this.splashed = false;
     lavaAmbience(true);
     if (player) {
-      const pd = new Puddle(player.color); pd.setGlow(true);
+      const pd = new Puddle(player.color); pd.setGlow(true); pd.setCos(player.cos);
       pd.group.position.set(-13.5, this.ledgeTop, 0); this.scene.add(pd.group);
-      this.actors.push({ pd, x: -13.5, y: this.ledgeTop, face: Math.PI / 2, ej: true });
+      const A = { pd, x: -13.5, y: this.ledgeTop, face: Math.PI / 2, ej: true }; this.actors.push(A);
+      this.addPet(A, player.cos && player.cos.pet);
     }
   }
   stop() { lavaAmbience(false); this.clearActors(); this.mode = 'idle'; }
@@ -165,6 +175,10 @@ export class LavaPit {
         A.pd.lookDown = 0.3 + Math.sin(t + A.x) * 0.2;
         A.pd.update(dt, t, 0, 0, A.face);
       }
+    } else if (this.mode === 'wardrobe') {
+      C.position.set(-7.1 + Math.sin(t * 0.3) * 0.6, this.ledgeTop + 1.9, 4.6); C.lookAt(-7.1, this.ledgeTop + 0.75, 0);
+      const A = this.actors[0];
+      if (A) { A.pd.update(dt, t, 0, 0, 0.25 + Math.sin(t * 0.6) * 0.5); if (A.pet) { A.petOwner.x = -9.6; A.petOwner.z = 1.45; A.petOwner.face = 0; updatePet(A.pet, A.petOwner, dt, t, true); A.pet.position.y = this.ledgeTop; A.pet.rotation.y = -0.4; } }
     } else if (this.mode === 'eject') {
       const A = this.actors[0];
       C.position.set(-5 + Math.min(t, 6) * 0.3, 5.2, 10.5); C.lookAt(-4.5 + Math.min(t, 6) * 0.35, 2.4, 0);
@@ -192,6 +206,7 @@ export class LavaPit {
           if (k > 2.6) { A.eyes.forEach(e => this.scene.remove(e)); A.eyes = null; }
         }
         if (pd.group.visible) pd.update(dt, t, vx, 0, Math.PI / 2);
+        if (A.pet) { A.petOwner.x = Math.min(A.x, this.edgeX - 1.2); A.petOwner.z = 0; A.petOwner.face = Math.PI / 2; updatePet(A.pet, A.petOwner, dt, t, true); A.pet.position.y = this.ledgeTop; if (t > 4.4) A.pet.rotation.y = Math.PI / 2; }
       }
       if (t > 9.2) this.done = true;
     }
