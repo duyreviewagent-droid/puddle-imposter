@@ -217,9 +217,12 @@ export function buildMap(def) {
     const ids = group.map(n => { const v = { ...floorSpot(byName(n), 1), links: [] }; vents.push(v); return vents.length - 1; });
     for (const a of ids) vents[a].links = ids.filter(b => b !== a);
   }
+  // 4 big dump buckets (for the Bucket role), spread over different rooms
+  const order = rooms.map(r => r).sort((a, b) => a.x + a.z * 0.7 - (b.x + b.z * 0.7));
+  const dumps = [0, 1, 2, 3].map(k => floorSpot(order[Math.floor((k + 0.5) / 4 * order.length)], 1));
   // props along walls
   const props = [];
-  const keyCells = () => [[button.x, button.z + 2], ...tasks.map(t => [Math.floor(t.x), Math.floor(t.z)]), [Math.floor(lights.x), Math.floor(lights.z)], ...valves.map(v => [Math.floor(v.x), Math.floor(v.z)]), ...vents.map(v => [Math.floor(v.x), Math.floor(v.z)])];
+  const keyCells = () => [[button.x, button.z + 2], ...tasks.map(t => [Math.floor(t.x), Math.floor(t.z)]), [Math.floor(lights.x), Math.floor(lights.z)], ...valves.map(v => [Math.floor(v.x), Math.floor(v.z)]), ...vents.map(v => [Math.floor(v.x), Math.floor(v.z)]), ...dumps.map(v => [Math.floor(v.x), Math.floor(v.z)])];
   const connected = () => {
     const seen = new Uint8Array(W * H), q = [idx(button.x, button.z + 2)]; seen[q[0]] = 1;
     while (q.length) { const c = q.pop(), i = c % W, j = (c / W) | 0; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n = idx(i + di, j + dj); if (walk(i + di, j + dj) && !seen[n]) { seen[n] = 1; q.push(n); } } }
@@ -235,7 +238,7 @@ export function buildMap(def) {
       props.push({ ...s, kind: Math.floor(R() * 1000) });
     }
   }
-  return { def, W, H, grid, roomOf, rooms, halls, button, lights, valves, tasks, vents, props, walk, idx };
+  return { def, W, H, grid, roomOf, rooms, halls, button, lights, valves, tasks, vents, dumps, props, walk, idx };
 }
 
 export function roomName(m, x, z) {

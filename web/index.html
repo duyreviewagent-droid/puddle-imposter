@@ -20,7 +20,7 @@
   <div class="tcard">
     <div class="tleft">
       <h1><span class="w">PUDDLE</span><span class="r">IMPOSTER</span></h1>
-      <p class="sub">You are a melting puddle with googly eyes. Someone on the crew is not just water.<br>Get voted out and you jump into the lava.</p>
+      <p class="sub">You are a melting puddle with googly eyes. Most of you are Water. Some of you are secretly Fire.<br>Get voted out and you jump into the lava.</p>
       <button id="b-solo" class="big green">▶ PLAY SOLO<small>you + computer puddles · starts right away</small></button>
       <button id="b-online" class="big blue online">🌐 PLAY ONLINE<small>optional · lobbies · codes · invite friends</small></button>
       <div class="stats" id="stats"></div>
@@ -32,11 +32,12 @@
       <div class="lab">YOU</div>
       <div class="you"><input id="nm" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false"><div id="swatches" class="swatches"></div></div>
       <div class="opts">
-        <div><div class="lab">ROLE</div><div class="seg" id="o-role" data-k="role"><b data-v="random">Random</b><b data-v="crew">Crewmate</b><b data-v="imp">Imposter</b></div></div>
-        <div><div class="lab">IMPOSTERS</div><div class="seg" id="o-imps" data-k="imps"><b data-v="1">1</b><b data-v="2">2</b><b data-v="3">3</b></div></div>
+        <div><div class="lab">YOUR ROLE</div><select id="o-rolesel" class="sel"><option value="random">Random</option><option value="water">💧 Water</option><option value="fire">🔥 Fire</option><option value="sponge">🧽 Sponge (Fire)</option><option value="bucket">🪣 Bucket (Fire)</option><option value="toilet">🚽 Toilet (Water)</option><option value="rain">🌧️ Raining (Water)</option><option value="ext">🧯 Fire Extinguisher (Water)</option></select></div>
+        <div><div class="lab">FIRE PLAYERS</div><div class="seg" id="o-imps" data-k="imps"><b data-v="1">1</b><b data-v="2">2</b><b data-v="3">3</b></div></div>
         <div><div class="lab">PUDDLES</div><div class="seg" id="o-count" data-k="count"><b data-v="6">6</b><b data-v="8">8</b><b data-v="10">10</b><b data-v="12">12</b></div></div>
         <div><div class="lab">KILL COOLDOWN</div><div class="seg" id="o-kill" data-k="killCd"><b data-v="15">15s</b><b data-v="25">25s</b><b data-v="35">35s</b></div></div>
         <div><div class="lab">COMPUTER SMARTS</div><div class="seg" id="o-smarts" data-k="smarts"><b data-v="0">Easy</b><b data-v="1">Normal</b><b data-v="2">Hard</b></div></div>
+        <div><div class="lab">SPECIAL ROLES</div><div class="seg" id="o-special" data-k="special"><b data-v="1">On</b><b data-v="0">Off</b></div></div>
         <div><div class="lab">TASKS EACH</div><div class="seg" id="o-tasks" data-k="tasksPer"><b data-v="4">4</b><b data-v="6">6</b><b data-v="8">8</b></div></div>
       </div>
     </div>
@@ -64,7 +65,7 @@
     <div id="lb-host" class="lbhost">
       <select id="lb-map"></select>
       <div><span class="lab">PUDDLES</span> <div class="seg" id="lb-count"><b data-v="6">6</b><b data-v="8">8</b><b data-v="10">10</b><b data-v="12">12</b></div></div>
-      <div><span class="lab">IMPOSTERS</span> <div class="seg" id="lb-imps"><b data-v="1">1</b><b data-v="2">2</b><b data-v="3">3</b></div></div>
+      <div><span class="lab">FIRE</span> <div class="seg" id="lb-imps"><b data-v="1">1</b><b data-v="2">2</b><b data-v="3">3</b></div></div>
     </div>
     <div class="row"><button id="lb-start" class="big green">▶ START GAME</button><div id="lb-wait" class="lbwait"></div><button id="lb-ward" class="grey">👕</button><button id="lb-leave" class="grey">Leave</button></div>
     <div class="mtype"><input id="lb-input" maxlength="100" placeholder="Say something… (Enter or T)" autocomplete="off" spellcheck="false"><button id="lb-send">Say</button></div>
@@ -85,20 +86,24 @@
   <div class="card help">
     <h2>HOW TO PLAY</h2>
     <div class="cols">
-      <div><h3 class="blue">CREWMATE</h3>
-        <p>Walk to the <b class="y">yellow rings</b> and do your tasks. When every crewmate finishes, the crew wins.</p>
+      <div><h3 class="blue">💧 WATER</h3>
+        <p>Walk to the <b class="y">yellow rings</b> and do your tasks. When all the Water finishes, Water wins.</p>
         <p>Find a body? <b>REPORT</b> it. Saw something? Press the red <b>emergency button</b> in the middle room.</p>
         <p>In meetings, accuse, defend and vote. The puddle with the most votes jumps into the lava.</p>
         <p>Fix sabotage: flip the breakers when the <b>lights</b> go out, and hold <b>both coolant valves</b> during a <b>heatwave</b>.</p></div>
-      <div><h3 class="red">IMPOSTER</h3>
-        <p>Evaporate the crew without being seen. Kill when nobody is watching, then slip into a <b>vent</b>.</p>
+      <div><h3 class="red">🔥 FIRE</h3>
+        <p>Set the Water on fire without being seen. Burn someone when nobody is watching, then slip into a <b>vent</b>.</p>
         <p><b>Sabotage</b> the lights so they can't see, or start a heatwave that melts everyone if it isn't fixed in time.</p>
-        <p>Fake tasks, blame someone else, and win when the imposters equal the crew.</p></div>
+        <p>Fake tasks, blame someone else, and win when Fire equals Water.</p></div>
+    </div>
+    <h3 style="margin:14px 0 4px">SPECIAL ROLES</h3>
+    <div class="cols roles"><div><p>🚽 <b>Toilet</b> (Water) — stand on any vent, press <b>F</b>, flush to any other vent.</p><p>🌧️ <b>Raining</b> (Water) — press <b>F</b> anywhere to wash away the lights/heatwave emergency.</p><p>🧯 <b>Fire Extinguisher</b> (Water) — press <b>F</b> by a burned body to revive it (2 per game, only before it's reported). You can smell smoke on the minimap.</p></div><div><p>🧽 <b>Sponge</b> (Fire) — soaks puddles up. No body left behind.</p><p>🪣 <b>Bucket</b> (Fire) — scoops puddles into a bucket, then press <b>F</b> at one of the 4 big buckets to dump them for good. Slower while carrying.</p></div>
     </div>
     <table class="keys">
       <tr><td>WASD / arrows</td><td>move</td><td>E / Space</td><td>use · task · button</td></tr>
-      <tr><td>R</td><td>report body</td><td>Q</td><td>kill (imposter)</td></tr>
-      <tr><td>V</td><td>vent (imposter) · A/D hop</td><td>1 / 2</td><td>sabotage lights / heatwave</td></tr>
+      <tr><td>R</td><td>report body</td><td>Q</td><td>burn (Fire)</td></tr>
+      <tr><td>F</td><td>special role ability</td><td>T</td><td>chat in the courtyard</td></tr>
+      <tr><td>V</td><td>vent (Fire) · A/D hop</td><td>1 / 2</td><td>sabotage lights / heatwave</td></tr>
       <tr><td>M</td><td>map</td><td>Esc</td><td>pause</td></tr>
     </table>
     <button id="b-help-close" class="big blue">GOT IT</button>
@@ -108,7 +113,7 @@
 <!-- role reveal -->
 <section id="scr-role" class="screen hidden">
   <div class="role">
-    <div class="roletitle" id="role-title">CREWMATE</div>
+    <div class="roletitle" id="role-title">WATER</div>
     <div class="rolesub" id="role-sub"></div>
     <canvas id="role-team" width="1100" height="300"></canvas>
     <div class="rolemap" id="role-map"></div>
@@ -124,12 +129,13 @@
   <canvas id="minimap" width="440" height="320"></canvas>
   <div id="roomname"></div>
   <div id="banner" class="hidden"></div>
-  <div id="ghostnote" class="hidden">You are a ghost 👻 — <span id="ghostmsg">finish your tasks to help the crew win!</span></div>
+  <div id="ghostnote" class="hidden">You are a ghost 👻 — <span id="ghostmsg">finish your tasks to help the Water win!</span></div>
   <div id="ventbar" class="hidden">In the vent · <b>A / D</b> to move · <b>V</b> to climb out</div>
   <div id="actions">
     <button id="a-sab" class="act sab hidden"><span class="ic">☠</span>SABOTAGE<small id="sab-cd"></small></button>
     <button id="a-vent" class="act vent hidden"><span class="ic">▦</span>VENT</button>
-    <button id="a-kill" class="act kill hidden"><span class="ic">💧</span>KILL<small id="kill-cd"></small></button>
+    <button id="a-kill" class="act kill hidden"><span class="ic" id="kill-ic">🔥</span><span id="kill-lab">BURN</span><small id="kill-cd"></small></button>
+    <button id="a-abil" class="act abil hidden"><span class="ic" id="abil-ic">🚽</span><span id="abil-lab">FLUSH</span><small id="abil-cd"></small></button>
     <button id="a-report" class="act report"><span class="ic">📣</span>REPORT</button>
     <button id="a-use" class="act use"><span class="ic">✋</span>USE</button>
   </div>
@@ -138,6 +144,7 @@
   <div id="saved" class="hidden">SAVED</div>
 </section>
 
+<section id="flushpick" class="screen hidden"><div class="card"><h2>🚽 FLUSH TO WHICH VENT?</h2><div id="flush-list"></div><button id="flush-x" class="grey">Cancel</button></div></section>
 <section id="bigmap" class="screen hidden"><canvas id="bigmapc" width="1100" height="760"></canvas><div class="hint">M or Esc to close</div></section>
 
 <section id="scr-pause" class="screen hidden">
@@ -153,7 +160,7 @@
 <!-- meeting -->
 <section id="scr-meeting" class="screen hidden">
   <div class="meet">
-    <div class="mhead"><div id="m-title">WHO IS THE IMPOSTER?</div><div id="m-sub"></div><div class="mtimer"><div id="m-timer"></div></div><div id="m-phase"></div></div>
+    <div class="mhead"><div id="m-title">WHO IS FIRE?</div><div id="m-sub"></div><div class="mtimer"><div id="m-timer"></div></div><div id="m-phase"></div></div>
     <div class="mbody">
       <div id="m-cards"></div>
       <div class="mchat"><div id="m-chat"></div><div class="mtype"><input id="m-input" maxlength="120" placeholder="Type a message… (Enter to send)" autocomplete="off" spellcheck="false"><button id="m-send">Send</button></div><div class="mquick"><button data-q="where">Where?</button><button data-q="skipq">Skip?</button><button data-q="tasks">I was doing tasks</button></div><div class="mhint" id="m-hint">Click a puddle to accuse or defend them</div></div>

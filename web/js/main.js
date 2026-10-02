@@ -4,15 +4,17 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Game, SPEED, USE_R } from './game.js';
 import { MAPS, COLORS, TASK_NAMES, buildMap, roomName, LOBBY } from './maps.js';
 import { HATS, SHIRTS, PETS, buildPet, updatePet, cleanCos, shirtCanvas } from './cosmetics.js';
-import { World, THEMES } from './world.js';
+import { World, THEMES, carryBucket } from './world.js';
 import { Puddle, drawPuddleIcon, setEnv } from './puddle.js';
 import { LavaPit } from './eject.js';
 import { openTask } from './tasks.js';
 import { planChat, humanSays, sayText, parseSay, botVote, count, coolDown } from './meeting.js';
+import { ROLES, isFire } from './roles.js';
 import { initAudio, sfx, setMood, setMusic, setSfx, audio } from './audio.js';
 
 const Q = new URLSearchParams(location.search);
@@ -24,14 +26,19 @@ const canvas = $('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, Q.has('lq') ? 0.75 : 1.5));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.9;
 const pmrem = new THREE.PMREMGenerator(renderer);
 const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 setEnv(env);
 const composer = new EffectComposer(renderer);
 const renderPass = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
-const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.38, 0.5, 0.97);
-composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(new OutputPass());
+const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.32, 0.45, 1.05);   // only real light sources glow
+// ambient occlusion: soft contact shadows in corners, under furniture and around puddles
+const gtao = new GTAOPass(new THREE.Scene(), new THREE.PerspectiveCamera(), innerWidth, innerHeight);
+gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 12 });
+gtao.blendIntensity = 0.85;
+composer.addPass(renderPass); if (!Q.has('lq') && !Q.has('noao')) composer.addPass(gtao); composer.addPass(bloom); composer.addPass(new OutputPass());
+function setView(scene, camera) { renderPass.scene = gtao.scene = scene; renderPass.camera = gtao.camera = camera; gtao.enabled = scene !== lava.scene; }
 const dark = $('dark'), dctx = dark.getContext('2d');
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -44,9 +51,10 @@ const lava = new LavaPit();
 lava.scene.environment = env; lava.scene.environmentIntensity = 0.25;
 
 // ------------------------------------------------------------------ settings + stats
-const DEF = { mapId: -1, role: 'random', imps: 2, count: 10, killCd: 25, smarts: 1, tasksPer: 6, color: 1, name: '', cos: { hat: 'none', shirt: 'none', pet: 'none' } };
+const DEF = { mapId: -1, role: 'random', imps: 2, count: 10, killCd: 25, smarts: 1, tasksPer: 6, special: 1, color: 1, name: '', cos: { hat: 'none', shirt: 'none', pet: 'none' } };
 const settings = { ...DEF, ...LS.get('pi.settings', {}) };
 settings.cos = cleanCos(settings.cos);
+if (settings.role === 'crew') settings.role = 'water'; if (settings.role === 'imp') settings.role = 'fire'; if (!ROLES[settings.role]) settings.role = 'random';
 const stats = { games: 0, wins: 0, crewWins: 0, impWins: 0, dunked: 0, ...LS.get('pi.stats', {}) };
 const maxImps = n => n <= 6 ? 1 : n <= 8 ? 2 : 3;
 function save(flash) {
@@ -84,9 +92,10 @@ function buildTitle() {
       b.onclick = () => { settings[k] = k === 'role' ? b.dataset.v : +b.dataset.v; if (k === 'count' || k === 'imps') settings.imps = Math.min(settings.imps, maxImps(settings.count)); sfx.blip(); buildTitle(); save(); };
     }
   }
+  $('o-rolesel').value = settings.role; $('o-rolesel').onchange = e => { settings.role = e.target.value; sfx.blip(); save(); };
   for (const b of $('o-imps').children) b.style.opacity = +b.dataset.v > maxImps(settings.count) ? 0.3 : 1;
   $('nm').value = settings.name;
-  $('stats').textContent = stats.games ? `Games ${stats.games} · Wins ${stats.wins} (crew ${stats.crewWins}, imposter ${stats.impWins}) · Puddles dunked ${stats.dunked}` : '';
+  $('stats').textContent = stats.games ? `Games ${stats.games} · Wins ${stats.wins} (Water ${stats.crewWins}, Fire ${stats.impWins}) · Puddles dunked ${stats.dunked}` : '';
   syncAudioButtons();
 }
 $('nm').oninput = e => { settings.name = e.target.value.trim().slice(0, 12); };
@@ -120,7 +129,7 @@ function toTitle() {
   if (taskPanel) taskPanel.close();
   S = 'title'; hideAll(); $('scr-title').classList.remove('hidden');
   lava.stop(); lava.showTitle(COLORS.slice(0, 7).map(c => c.hex));
-  renderPass.scene = lava.scene; renderPass.camera = lava.camera;
+  setView(lava.scene, lava.camera);
   setMood('title'); buildTitle();
 }
 function hideAll() { for (const id of ['scr-wardrobe', 'scr-online', 'scr-lobby', 'scr-title', 'scr-role', 'hud', 'scr-alert', 'scr-meeting', 'scr-end', 'eject-txt', 'bigmap', 'scr-pause', 'scr-help']) $(id).classList.add('hidden'); }
@@ -131,7 +140,7 @@ function startGame() {
   me = 0;
   const mapId = Q.has('map') ? +Q.get('map') : settings.mapId >= 0 ? settings.mapId : Math.floor(Math.random() * MAPS.length);
   const role = Q.get('role') || settings.role;
-  game = new Game({ mapId, role, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer, color: settings.color, cos: settings.cos, name: settings.name || COLORS[settings.color].name });
+  game = new Game({ mapId, role, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer, special: settings.special !== 0, color: settings.color, cos: settings.cos, name: settings.name || COLORS[settings.color].name });
   setupGame();
 }
 function setupGame() {
@@ -146,14 +155,15 @@ function setupGame() {
   pets = game.players.map(p => { if (!p.cos || p.cos.pet === 'none') return null; const pet = buildPet(p.cos.pet); world.scene.add(pet); return pet; });
   bodyModels = new Map(); killedFx = null; endT = -1; visR = game.vision(h);
   lava.stop();
-  renderPass.scene = world.scene; renderPass.camera = world.camera;
+  setView(world.scene, world.camera);
   camPos.set(h.x, CAM.y, h.z + CAM.z);
   // role reveal
   hideAll(); S = 'intro'; stateT = 0;
   $('scr-role').classList.remove('hidden');
-  const t = $('role-title'); t.textContent = h.imp ? 'IMPOSTER' : 'CREWMATE'; t.className = 'roletitle ' + (h.imp ? 'imp' : 'crew');
+  const RI = ROLES[h.role] || ROLES.water;
+  const t = $('role-title'); t.textContent = RI.emoji + ' ' + RI.name.toUpperCase(); t.className = 'roletitle ' + (h.imp ? 'fire' : 'water');
   const ni = game.o.imps;
-  $('role-sub').textContent = h.imp ? (ni > 1 ? 'Evaporate the crew with your partner' + (ni > 2 ? 's' : '') + '. Don\'t get caught.' : 'Evaporate the crew. Don\'t get caught.') : `There ${ni === 1 ? 'is 1 Imposter' : 'are ' + ni + ' Imposters'} among the puddles`;
+  $('role-sub').textContent = RI.goal + (h.imp ? '' : `  (${ni} Fire hiding among you)`);
   $('role-map').textContent = game.map.def.name.toUpperCase();
   const team = h.imp ? game.players.filter(p => p.imp) : game.players;
   const rc = $('role-team'), g = rc.getContext('2d'); g.clearRect(0, 0, rc.width, rc.height);
@@ -181,6 +191,7 @@ addEventListener('keydown', e => {
     if (e.code === 'KeyR') doReport();
     if (e.code === 'KeyQ') doKill();
     if (e.code === 'KeyV') doVent();
+    if (e.code === 'KeyF') doAbility();
     if (e.code === 'Digit1') doSab('lights');
     if (e.code === 'Digit2') doSab('heat');
     if (h.inVent >= 0 && (e.code === 'KeyA' || e.code === 'KeyD' || e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
@@ -199,6 +210,7 @@ $('a-use').onclick = () => { const h = H(); if (h.inVent >= 0) doVent(); else do
 $('a-report').onclick = () => doReport();
 $('a-kill').onclick = () => doKill();
 $('a-vent').onclick = () => doVent();
+$('a-abil').onclick = () => doAbility();
 $('a-sab').onclick = () => $('sabmenu').classList.toggle('hidden');
 $('s-lights').onclick = () => { doSab('lights'); $('sabmenu').classList.add('hidden'); };
 $('s-heat').onclick = () => { doSab('heat'); $('sabmenu').classList.add('hidden'); };
@@ -212,7 +224,7 @@ function toggleMap() {
 function doUse() {
   const h = H(), u = game.usable(h); if (!u) return;
   if (u.kind === 'task') {
-    if (h.imp) { sfx.bad(); flashBanner('Imposters can only fake tasks', 1.6); return; }
+    if (h.imp) { sfx.bad(); flashBanner('Fire can only fake tasks', 1.6); return; }
     const t = game.map.tasks[u.id];
     taskPanel = openTask(t.type, () => { if (NET) { h.done.add(u.id); nsend({ t: 'act', a: 'task', id: u.id }); } else game.completeTask(h, u.id); buildTaskList(); }, () => { });
     taskPanel.at = { x: h.x, z: h.z };
@@ -236,7 +248,7 @@ function flashBanner(html, t = 2.5) { const b = $('banner'); b.innerHTML = html;
 // ------------------------------------------------------------------ hud
 function buildTaskList() {
   const h = H(), L = $('tasklist'); let html = '';
-  if (h.imp) html += `<div class="imp">Sabotage and kill everyone.</div><div style="color:#9fb4c4;font-size:12px">Fake tasks:</div>`;
+  if (h.imp) html += `<div class="imp">Burn the Water and sabotage.</div><div style="color:#9fb4c4;font-size:12px">Fake tasks:</div>`;
   if (!h.alive && !h.imp) html += `<div style="color:#9fb4c4;font-size:12px">You're a ghost — keep doing tasks</div>`;
   if (game.sab) html += `<div class="sab">${game.sab.type === 'lights' ? '💡 Fix Lights (' + game.map.lights.room + ')' : '🔥 Heatwave! Coolant valves (' + game.map.valves.map(v => v.room).join(' + ') + ')'}</div>`;
   for (const id of h.tasks) { const t = game.map.tasks[id]; html += `<div class="t ${h.done.has(id) && !h.imp ? 'done' : ''}">${t.room}: ${TASK_NAMES[t.type]}</div>`; }
@@ -266,6 +278,8 @@ function drawMap(c, big) {
   if (!h.imp) for (const id of h.tasks) if (!h.done.has(id)) { const t = m.tasks[id]; const [x, y] = P(t.x, t.z); g.fillStyle = '#ffd84a'; g.font = `900 ${big ? 26 : 34}px sans-serif`; g.textAlign = 'center'; g.fillText('!', x, y + 10); }
   if (game.sab && blink) { const pts = game.sab.type === 'lights' ? [m.lights] : m.valves; for (const s of pts) { const [x, y] = P(s.x, s.z); g.fillStyle = '#ff2a2a'; g.beginPath(); g.arc(x, y, big ? 12 : 16, 0, 7); g.fill(); } }
   if (h.imp && big) for (const v of m.vents) { const [x, y] = P(v.x, v.z); g.fillStyle = '#8a95a0'; g.fillRect(x - 6, y - 4, 12, 8); }
+  if (h.role === 'ext' && h.alive && h.uses > 0) for (const b of game.bodies) { if (b.reported || Math.hypot(b.x - h.x, b.z - h.z) > 16) continue; const [bx, by] = P(b.x, b.z); g.font = `${big ? 26 : 34}px sans-serif`; g.textAlign = 'center'; g.fillStyle = '#000'; g.fillText('💨', bx, by + 10); }
+  if (h.role === 'bucket') for (const d of game.map.dumps) { const [bx, by] = P(d.x, d.z); g.font = `${big ? 22 : 30}px sans-serif`; g.textAlign = 'center'; g.fillStyle = '#000'; g.fillText('🪣', bx, by + 8); }
   const [x, y] = P(h.x, h.z);
   g.fillStyle = h.color; g.shadowColor = h.color; g.shadowBlur = 14; g.beginPath(); g.arc(x, y, big ? 10 : 16, 0, 7); g.fill(); g.shadowBlur = 0;
   g.strokeStyle = '#fff'; g.lineWidth = 3; g.stroke();
@@ -279,12 +293,18 @@ function handleEvents() {
     if (e.type === 'kill') {
       const k = game.players[e.killer], v = game.players[e.victim];
       const near = e.victim === me || e.killer === me || humanSees(e.x, e.z);
-      if (near) sfx.kill(); else { const d = Math.hypot(e.x - h.x, e.z - h.z); if (d < 18) sfx.splash(1, 0.25 * (1 - d / 18), (e.x - h.x) / 18); }
-      world.burst(e.x, 0.7, e.z, 40, 3.2);
-      world.wetSpot(e.x, e.z, 2.4, 99999);
-      const b = new Puddle(v.color, '', world); b.dead = 1; b.group.position.set(e.x, 0, e.z); b.heading = Math.random() * 6; world.scene.add(b.group); bodyModels.set(v.id, b);
+      if (!near) { const d = Math.hypot(e.x - h.x, e.z - h.z); if (d < 18) sfx.splash(1, 0.25 * (1 - d / 18), (e.x - h.x) / 18); }
+      const style = e.style || 'fire';
+      if (style === 'fire') {
+        world.fire(e.x, e.z, 2.6, 1.1); world.steamFx(e.x, e.z, 9); world.burst(e.x, 0.7, e.z, 26, 2.4);
+        if (near) { sfx.burn(); }
+        world.wetSpot(e.x, e.z, 2.4, 99999);
+        const b = new Puddle(v.color, '', world); b.dead = 1; b.setCos(v.cos); b.group.position.set(e.x, 0, e.z); b.heading = Math.random() * 6; world.scene.add(b.group); bodyModels.set(v.id, b);
+        b.body.material.color.setHex(0x9aa4ac); b.body.material.attenuationColor.setHex(0x3a2e26); b.body.material.attenuationDistance = 0.35;       // scorched, steaming
+      } else if (style === 'sponge') { world.suck(e.x, e.z, e.kx, e.kz); if (near) sfx.slurp(); }
+      else { world.burst(e.x, 0.5, e.z, 20, 1.6); world.wetSpot(e.x, e.z, 1.2, 20); if (near) sfx.scoop(); }
       models[v.id].setGhost(true); if (models[v.id].label) models[v.id].label.material.opacity = 0.5;
-      if (e.victim === me) { killedFx = { t: 0, killer: k.id }; $('flash').style.transition = 'none'; $('flash').style.opacity = 0.75; requestAnimationFrame(() => { $('flash').style.transition = 'opacity 1.6s'; $('flash').style.opacity = 0; }); if (taskPanel) taskPanel.close(); flashBanner(`YOU WERE EVAPORATED<small>by ${k.name}</small>`, 3.5); }
+      if (e.victim === me) { killedFx = { t: 0, killer: k.id }; $('flash').style.transition = 'none'; $('flash').style.opacity = 0.75; requestAnimationFrame(() => { $('flash').style.transition = 'opacity 1.6s'; $('flash').style.opacity = 0; }); if (taskPanel) taskPanel.close(); flashBanner(`${{ sponge: '🧽 YOU WERE SOAKED UP', bucket: '🪣 YOU WERE SCOOPED INTO A BUCKET' }[e.style] || '🔥 YOU WERE SET ON FIRE'}<small>by ${k.name}</small>`, 3.5); }
     } else if (e.type === 'report' || e.type === 'emergency') {
       if (taskPanel) taskPanel.close();
       S = 'alert'; stateT = 0; $('m-chat').innerHTML = ''; if (!NET) for (const p of game.players) p.voted = null;
@@ -303,7 +323,18 @@ function handleEvents() {
     } else if (e.type === 'fixed') {
       if (e.kind === 'lights') sfx.lightsOn(); else sfx.task();
       buildTaskList();
-    } else if (e.type === 'task') buildTaskList();
+    } else if (e.type === 'dump') { if (humanSees(e.x, e.z) || e.p === me) { sfx.dump(); world.burst(e.x, 1.0, e.z, 18, 1.5); } }
+    else if (e.type === 'flush') { world.swirl(e.x, e.z); world.swirl(e.x2, e.z2); if (e.p === me || humanSees(e.x, e.z) || humanSees(e.x2, e.z2)) sfx.flush(); }
+    else if (e.type === 'rain') { world.rainAt(e.x, e.z); sfx.rain(); flashBanner(`🌧️ IT STARTED RAINING<small>${e.kind === 'heat' ? 'The heatwave' : 'The blackout'} was washed away!</small>`, 3); buildTaskList(); }
+    else if (e.type === 'revive') {
+      const v = game.players[e.victim]; v.alive = true;
+      models[v.id].setGhost(false); if (models[v.id].label) models[v.id].label.material.opacity = 1;
+      const bm = bodyModels.get(v.id); if (bm) { world.scene.remove(bm.group); bm.dispose(); bodyModels.delete(v.id); }
+      world.steamFx(e.x, e.z, 3); world.burst(e.x, 0.6, e.z, 24, 2);
+      if (e.victim === me || e.p === me || humanSees(e.x, e.z)) sfx.revive();
+      if (e.victim === me) { killedFx = null; $('ghostnote').classList.add('hidden'); flashBanner(`🧯 YOU WERE REVIVED<small>by ${game.players[e.p].name}</small>`, 3.5); buildTaskList(); }
+    }
+    else if (e.type === 'task') buildTaskList();
     else if (e.type === 'win') { endT = e.heat ? 2.5 : 2.2; if (e.heat) { $('flash').style.background = '#ff7a10'; $('flash').style.transition = 'opacity 2s'; $('flash').style.opacity = 0.8; } }
   }
   game.events.length = 0;
@@ -320,7 +351,7 @@ function startMeeting() {
   MT = { t: 0, discuss, vote, plan: NET ? [] : planChat(game, discuss), replies: [], phase: 'discuss', voteAt: {}, revealT: -1, sel: -1 };
   for (const p of game.players) { if (!NET) p.voted = null; if (p.ai && p.alive) MT.voteAt[p.id] = discuss + 1.5 + game.R() * (vote - 6); }
   const by = game.players[M.by];
-  $('m-title').textContent = 'WHO IS THE IMPOSTER?';
+  $('m-title').textContent = 'WHO IS FIRE?';
   $('m-sub').textContent = M.body >= 0 ? `${by.name} reported ${game.players[M.body].name}'s body in ${M.room}` : `${by.name} called an emergency meeting`;
   $('m-skip').classList.remove('sel'); $('m-skipvotes').innerHTML = '';
   $('m-hint').textContent = h.alive ? 'Click a puddle to accuse or vouch for them' : 'Ghosts can watch, but nobody can hear you';
@@ -336,7 +367,7 @@ function buildCards() {
     const d = document.createElement('div'); d.className = 'pc' + (p.alive ? '' : ' dead') + (p.id === me ? ' me' : '') + (MT.sel === p.id ? ' sel' : '');
     d.append(cardIcon(p, !p.alive));
     const info = document.createElement('div');
-    info.innerHTML = `<div class="pn" style="text-shadow:0 0 10px ${p.color}">${p.name}${p.id === me ? ' (you)' : ''}</div><div class="pr">${p.alive ? (h.imp && p.imp && p.id !== me ? '<span class="imptag">IMPOSTER</span>' : p.colorName) : p.ejected ? 'ejected' : 'dead'}</div>`;
+    info.innerHTML = `<div class="pn" style="text-shadow:0 0 10px ${p.color}">${p.name}${p.id === me ? ' (you)' : ''}</div><div class="pr">${p.alive ? (h.imp && p.imp && p.id !== me ? `<span class="imptag">🔥 ${ROLES[p.role].name.toUpperCase()}</span>` : p.colorName) : p.ejected ? 'ejected' : 'dead'}</div>`;
     d.append(info);
     if (p.alive && p.voted != null && MT.revealT < 0) { const v = document.createElement('div'); v.className = 'voted'; v.textContent = 'I VOTED'; d.append(v); }
     if (MT.revealT >= 0) { const dots = document.createElement('div'); dots.className = 'dots'; for (const q of game.players) if (q.alive && q.voted === p.id) { const s = document.createElement('div'); s.className = 'dot'; s.style.background = q.color; s.style.boxShadow = `0 0 6px ${q.color}`; dots.append(s); } d.append(dots); }
@@ -426,12 +457,13 @@ function startEject(r) {
   for (const s of world.spots) { s.m.visible = false; }
   S = 'eject'; stateT = 0;
   $('scr-meeting').classList.add('hidden'); $('scr-alert').classList.add('hidden'); $('hud').classList.add('hidden'); $('scr-role').classList.add('hidden');
-  renderPass.scene = lava.scene; renderPass.camera = lava.camera;
+  setView(lava.scene, lava.camera);
   lava.startEject(ej ? { color: ej.color, cos: ej.cos } : null);
   setMood('lava');
   const left = NET ? r.left : game.impAlive();
-  const l1 = ej ? `${ej.name} was ${ej.imp ? 'An Imposter.' : 'not An Imposter.'}` : `No one was ejected. ${r.tie ? '(Tie)' : '(Skipped)'}`;
-  const l2 = `${left} Imposter${left === 1 ? '' : 's'} remain${left === 1 ? 's' : ''}.`;
+  const ejRole = ej && ej.imp ? (NET ? r.role : ej.role) : null;
+  const l1 = ej ? (ej.imp ? `${ej.name} was Fire${ejRole && ejRole !== 'fire' ? ' — the ' + ROLES[ejRole].name : ''}.` : `${ej.name} was not Fire.`) : `No one was ejected. ${r.tie ? '(Tie)' : '(Skipped)'}`;
+  const l2 = `${left} Fire remain${left === 1 ? 's' : ''}.`;
   EJ = { l1, l2, start: ej ? 3.1 : 1.2, shown: 0, rev: false, imp: ej && ej.imp };
   $('eject-l1').textContent = ''; $('eject-l2').textContent = '';
   $('eject-txt').classList.remove('hidden');
@@ -449,10 +481,10 @@ function updateEject(dt) {
   if (lava.done || (lava.mode === 'eject' && !lava.actors.length && t > 8.5)) {
     lava.stop(); $('eject-txt').classList.add('hidden');
     if (game.winner) { showEnd(); return; }
-    S = 'play'; renderPass.scene = world.scene; renderPass.camera = world.camera;
+    S = 'play'; setView(world.scene, world.camera);
     $('hud').classList.remove('hidden'); setMood('play'); buildTaskList();
     const h = H(); camPos.set(h.x, CAM.y, h.z + CAM.z);
-    if (!h.alive) { $('ghostnote').classList.remove('hidden'); $('ghostmsg').textContent = h.imp ? 'your partner has to finish the job.' : 'finish your tasks to help the crew win!'; }
+    if (!h.alive) { $('ghostnote').classList.remove('hidden'); $('ghostmsg').textContent = h.imp ? 'your partner has to finish the job.' : 'finish your tasks to help the Water win!'; }
   }
 }
 
@@ -463,12 +495,12 @@ function showEnd() {
   $('flash').style.opacity = 0; setTimeout(() => $('flash').style.background = '#ff1a1a', 2000);
   const h = H(), w = game.winner, won = (w.side === 'imp') === h.imp;
   const t = $('end-title'); t.textContent = won ? 'VICTORY' : 'DEFEAT'; t.className = won ? 'win' : 'lose';
-  $('end-sub').textContent = (w.side === 'imp' ? 'Imposters win — ' : 'Crewmates win — ') + w.why;
+  $('end-sub').textContent = (w.side === 'imp' ? '🔥 Fire wins — ' : '💧 Water wins — ') + w.why;
   const box = $('end-players'); box.innerHTML = '';
   for (const p of game.players) {
     const d = document.createElement('div'); d.className = 'ep' + (p.imp ? ' imp' : '');
     d.append(cardIcon(p, !p.alive, 90));
-    d.insertAdjacentHTML('beforeend', `<div class="n" style="text-shadow:0 0 10px ${p.color}">${p.name}</div><div class="r" style="color:${p.imp ? '#ff5a4a' : '#8fd8ff'}">${p.imp ? 'IMPOSTER' : 'CREWMATE'}</div><div class="r" style="color:#8fa2b2">${p.alive ? 'alive' : p.ejected ? 'lava' : 'evaporated'}</div>`);
+    d.insertAdjacentHTML('beforeend', `<div class="n" style="text-shadow:0 0 10px ${p.color}">${p.name}</div><div class="r" style="color:${p.imp ? '#ff5a4a' : '#8fd8ff'}">${(ROLES[p.role] || ROLES.water).emoji} ${(ROLES[p.role] || (p.imp ? ROLES.fire : ROLES.water)).name.toUpperCase()}</div><div class="r" style="color:#8fa2b2">${p.alive ? 'alive' : p.ejected ? 'lava' : 'evaporated'}</div>`);
     box.append(d);
   }
   $('b-again').textContent = NET ? 'BACK TO LOBBY' : 'PLAY AGAIN';
@@ -483,7 +515,7 @@ let last = performance.now(), fpsT = 0, frames = 0, fps = 0;
 const proj = new THREE.Vector3();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  frames++; fpsT += dt; if (fpsT > 1) { fps = frames / fpsT; frames = 0; fpsT = 0; if (Q.has('dbg')) document.title = `${fps.toFixed(0)} fps`; }
+  frames++; fpsT += dt; if (fpsT > 1) { fps = frames / fpsT; frames = 0; fpsT = 0; if (Q.has('dbg')) { document.title = `${fps.toFixed(0)} fps`; let d = $('dbgfps'); if (!d) { d = document.createElement('div'); d.id = 'dbgfps'; d.style.cssText = 'position:fixed;left:50%;top:6px;z-index:99;font:800 22px monospace;color:#0f0;background:#000a;padding:2px 8px'; document.body.append(d); } d.textContent = `${fps.toFixed(0)} fps`; } }
   stateT += dt; dripCd -= dt;
   const aspect = innerWidth / innerHeight;
   if (S === 'title' || S === 'online' || S === 'wardrobe') lava.update(dt, aspect);
@@ -515,7 +547,7 @@ function playUpdate(dt) {
   if (killedFx && killedFx.t < 1.8) { mx = mz = 0; }
   const len = Math.hypot(mx, mz);
   if (len) {
-    const sp = SPEED * (h.alive ? 1 : 1.3);
+    const sp = SPEED * (h.alive ? (h.carry >= 0 ? 0.72 : 1) : 1.3);
     mx /= len; mz /= len;
     const ox = h.x, oz = h.z;
     game.move(h, mx * sp * dt, mz * sp * dt, !h.alive);
@@ -559,12 +591,12 @@ function playUpdate(dt) {
       heatBeep -= dt; if (heatBeep <= 0) { heatBeep = s.t < 10 ? 0.5 : 1; sfx.heatAlarm(); }
       $('heatfx').style.opacity = 0.5 + 0.5 * Math.sin(performance.now() / 160);
     } else {
-      $('banner').innerHTML = h.imp ? '💡 Lights are out<small>Crew vision is tiny now</small>' : `💡 LIGHTS SABOTAGED<small>Flip the breakers in ${game.map.lights.room}</small>`;
+      $('banner').innerHTML = h.imp ? '💡 Lights are out<small>Water can barely see now</small>' : `💡 LIGHTS SABOTAGED<small>Flip the breakers in ${game.map.lights.room}</small>`;
       $('banner').classList.remove('hidden'); $('heatfx').style.opacity = 0;
     }
   } else { $('heatfx').style.opacity = 0; if (bannerT <= 0) $('banner').classList.add('hidden'); }
   drawMap($('minimap'), false);
-  roleCard();
+  roleCard(); abilityHud(h);
 }
 
 function drawWorld(dt, aspect) {
@@ -584,6 +616,8 @@ function drawWorld(dt, aspect) {
     pd.melt = heat ? 1.2 : 0;
     pd.group.position.set(p.x, p.alive ? 0 : 0.35 + Math.sin(t * 2 + i) * 0.12, p.z);
     if (vis) pd.update(dt, t, p.vx, p.vz, p.face);
+    if (p.carry >= 0 && p.alive && !pd.bucket) { pd.bucket = carryBucket(); pd.bucket.position.set(0.58, 0.42, 0.12); pd.lean.add(pd.bucket); }
+    if (pd.bucket) { pd.bucket.visible = p.carry >= 0 && p.alive; pd.bucket.rotation.z = Math.sin(t * 9) * 0.12; }
     if (pets[i]) updatePet(pets[i], p, dt, t, vis && p.alive);
   });
   for (const [id, b] of bodyModels) { const bd = game.bodies.find(x => x.pid === id); b.group.visible = !!bd && humanSees(b.group.position.x, b.group.position.z); if (b.group.visible) b.update(dt, t, 0, 0, b.heading); }
@@ -636,24 +670,68 @@ function drawDark() {
 
 
 
+// ------------------------------------------------------------------ special role abilities (F)
+function doAbility() {
+  const h = H(); if (S !== 'play' || !h.alive) return;
+  const a = game.ability(h);
+  if (!a) { if (['toilet', 'rain', 'ext', 'bucket'].includes(h.role)) sfx.bad(); return; }
+  if (a.kind === 'dump') { if (NET) nsend({ t: 'act', a: 'ability', op: 'dump' }); else game.dump(h); }
+  else if (a.kind === 'rain') { if (NET) nsend({ t: 'act', a: 'ability', op: 'rain' }); else game.rain(h); }
+  else if (a.kind === 'revive') { if (NET) nsend({ t: 'act', a: 'ability', op: 'revive' }); else game.revive(h); }
+  else if (a.kind === 'flush') openFlush(a.i);
+}
+function openFlush(from) {
+  const list = $('flush-list'); list.innerHTML = '';
+  game.map.vents.forEach((v, j) => {
+    if (j === from) return;
+    const b = document.createElement('button'); b.textContent = '🚽 ' + roomName(game.map, v.x, v.z);
+    b.onclick = () => { $('flushpick').classList.add('hidden'); const h = H(); if (NET) nsend({ t: 'act', a: 'ability', op: 'flush', j }); else game.flush(h, j); };
+    list.append(b);
+  });
+  $('flushpick').classList.remove('hidden'); sfx.blip(900);
+}
+$('flush-x').onclick = () => $('flushpick').classList.add('hidden');
+function abilityHud(h) {
+  const has = ['toilet', 'rain', 'ext', 'bucket'].includes(h.role) && h.alive;
+  $('a-abil').classList.toggle('hidden', !has);
+  if (!has) return;
+  const I = { toilet: ['🚽', 'FLUSH'], rain: ['🌧️', 'RAIN'], ext: ['🧯', 'REVIVE'], bucket: ['🪣', 'DUMP'] }[h.role];
+  $('abil-ic').textContent = I[0]; $('abil-lab').textContent = I[1];
+  $('a-abil').classList.toggle('on', !!game.ability(h));
+  const cdMax = ROLES[h.role].cd || 1;
+  $('abil-cd').textContent = (h.role === 'toilet' || h.role === 'rain') && h.abilCd > 0 ? Math.ceil(h.abilCd) : h.role === 'ext' ? (h.uses > 0 ? '' : '0') : '';
+  $('a-abil').style.setProperty('--cd', (h.role === 'toilet' || h.role === 'rain') ? Math.max(0, h.abilCd / cdMax) : 0);
+  const K = { sponge: ['🧽', 'SOAK'], bucket: ['🪣', 'SCOOP'] }[h.role] || ['🔥', 'BURN'];
+  $('kill-ic').textContent = K[0]; $('kill-lab').textContent = K[1];
+}
+
 // ------------------------------------------------------------------ role card (bottom-left): your goal + abilities with cooldowns
 let rcKey = '';
 function roleCard() {
   const h = H(), o = game.o, card = $('rolecard');
   const ready = (v, max) => v > 0 ? `<b class="cd">${Math.ceil(v)}s</b>` : '<b class="rd">ready</b>';
   let role, goal, ab;
+  const RI = ROLES[h.role] || ROLES.water;
+  const abil = () => {
+    if (h.role === 'toilet') return `<div class="ab"><span>🚽 Flush from any vent [F]</span>${ready(h.abilCd)}</div>`;
+    if (h.role === 'rain') return `<div class="ab"><span>🌧️ Rain away emergencies [F]</span>${game.sab ? ready(h.abilCd) : '<b class="cd">no emergency</b>'}</div>`;
+    if (h.role === 'ext') return `<div class="ab"><span>🧯 Revive a burned body [F]</span><b class="${h.uses > 0 ? 'rd' : 'cd'}">${h.uses} left</b></div>`;
+    if (h.role === 'bucket') return `<div class="ab"><span>🪣 Dump at a big bucket [F]</span><b class="${h.carry >= 0 ? 'cd' : 'rd'}">${h.carry >= 0 ? 'FULL' : 'empty'}</b></div>`;
+    return '';
+  };
   if (!h.alive) {
-    role = h.imp ? '👻 IMPOSTER GHOST' : '👻 GHOST';
-    goal = h.imp ? 'You can still sabotage. Your partners finish the job.' : 'Float through walls and finish your tasks — the crew still needs them.';
+    role = '👻 ' + (h.imp ? 'FIRE GHOST' : 'WATER GHOST');
+    goal = h.imp ? 'You can still sabotage. Your partners finish the job.' : 'Float through walls and finish your tasks — the Water still needs them.';
     ab = h.imp ? `<div class="ab"><span>☠ Sabotage [1 / 2]</span>${game.sab ? '<b class="cd">active</b>' : ready(game.sabCd)}</div>` : `<div class="ab"><span>✋ Do tasks [E]</span><b class="rd">${h.tasks.filter(t => !h.done.has(t)).length} left</b></div>`;
   } else if (h.imp) {
-    role = '🟥 IMPOSTER';
-    goal = 'Evaporate crewmates until imposters equal the crew. Don\'t get caught.';
-    ab = `<div class="ab"><span>💧 Kill [Q]</span>${ready(h.killCd)}</div><div class="ab"><span>▦ Vent [V]</span><b class="rd">${h.inVent >= 0 ? 'inside' : 'ready'}</b></div><div class="ab"><span>☠ Sabotage [1 lights / 2 heat]</span>${game.sab ? '<b class="cd">active</b>' : ready(game.sabCd)}</div><div class="ab"><span>📣 Report [R] · 🔴 Meeting</span><b class="rd">${h.meetings} left</b></div>`;
+    role = RI.emoji + ' ' + RI.name.toUpperCase() + (h.role !== 'fire' ? ' · FIRE' : '');
+    goal = RI.goal;
+    const kn = h.role === 'sponge' ? '🧽 Soak up [Q]' : h.role === 'bucket' ? '🪣 Scoop [Q]' : '🔥 Burn [Q]';
+    ab = `<div class="ab"><span>${kn}</span>${h.carry >= 0 ? '<b class="cd">bucket full</b>' : ready(h.killCd)}</div>${abil()}<div class="ab"><span>▦ Vent [V]</span><b class="rd">${h.carry >= 0 ? 'too heavy' : h.inVent >= 0 ? 'inside' : 'ready'}</b></div><div class="ab"><span>☠ Sabotage [1 lights / 2 heat]</span>${game.sab ? '<b class="cd">active</b>' : ready(game.sabCd)}</div>`;
   } else {
-    role = '🟦 CREWMATE';
-    goal = 'Finish your tasks, or find the imposters and vote them into the lava.';
-    ab = `<div class="ab"><span>✋ Use / tasks [E]</span><b class="rd">${h.tasks.filter(t => !h.done.has(t)).length} left</b></div><div class="ab"><span>📣 Report body [R]</span><b class="rd">ready</b></div><div class="ab"><span>🔴 Emergency button</span>${h.meetings > 0 ? (game.buttonCd > 0 ? ready(game.buttonCd) : `<b class="rd">${h.meetings} left</b>`) : '<b class="cd">used</b>'}</div>`;
+    role = RI.emoji + ' ' + RI.name.toUpperCase() + (h.role !== 'water' ? ' · WATER' : '');
+    goal = RI.goal;
+    ab = `${abil()}<div class="ab"><span>✋ Use / tasks [E]</span><b class="rd">${h.tasks.filter(t => !h.done.has(t)).length} left</b></div><div class="ab"><span>📣 Report body [R]</span><b class="rd">ready</b></div><div class="ab"><span>🔴 Emergency button</span>${h.meetings > 0 ? (game.buttonCd > 0 ? ready(game.buttonCd) : `<b class="rd">${h.meetings} left</b>`) : '<b class="cd">used</b>'}</div>`;
   }
   const key = role + ab;
   if (key !== rcKey) { rcKey = key; $('rc-role').textContent = role; $('rc-goal').textContent = goal; $('rc-abil').innerHTML = ab; card.className = !h.alive ? 'ghost' : h.imp ? 'imp' : ''; }
@@ -667,7 +745,7 @@ function sendMe() { nsend({ t: 'me', name: settings.name || COLORS[settings.colo
 function openWardrobe(from) {
   initAudio(); wardFrom = from;
   $('scr-wardrobe').classList.remove('hidden');
-  if (from === 'title') { $('scr-title').classList.add('hidden'); S = 'wardrobe'; lava.showWardrobe(COLORS[settings.color].hex, settings.cos); renderPass.scene = lava.scene; renderPass.camera = lava.camera; }
+  if (from === 'title') { $('scr-title').classList.add('hidden'); S = 'wardrobe'; lava.showWardrobe(COLORS[settings.color].hex, settings.cos); setView(lava.scene, lava.camera); }
   else { $('scr-lobby').classList.add('hidden'); lobbyWard = true; }
   buildWardrobe();
 }
@@ -708,7 +786,7 @@ function enterLobbyWorld() {
     lobbyMe.x = b.x + Math.sin(a) * 4; lobbyMe.z = b.z + Math.cos(a) * 4; lobbyMe.face = a;
     camPos.set(lobbyMe.x, CAM.y, lobbyMe.z + CAM.z);
   }
-  renderPass.scene = lobbyWorld.scene; renderPass.camera = lobbyWorld.camera;
+  setView(lobbyWorld.scene, lobbyWorld.camera);
   dctx.clearRect(0, 0, dark.width, dark.height);
   syncLobbyModels();
 }
@@ -849,7 +927,7 @@ function drawLobby() {
     box.append(d);
   }
   const o = L.opts, bots = Math.max(0, o.count - L.players.length);
-  $('lb-sum').textContent = `${o.mapId < 0 ? 'Random map' : MAPS[o.mapId].name} · ${o.imps} imposter${o.imps > 1 ? 's' : ''} · ${L.players.length} player${L.players.length > 1 ? 's' : ''} + ${bots} computer puddle${bots === 1 ? '' : 's'} · kill cooldown ${o.killCd}s`;
+  $('lb-sum').textContent = `${o.mapId < 0 ? 'Random map' : MAPS[o.mapId].name} · ${o.imps} Fire · ${L.players.length} player${L.players.length > 1 ? 's' : ''} + ${bots} computer puddle${bots === 1 ? '' : 's'} · kill cooldown ${o.killCd}s`;
   $('lb-host').classList.toggle('hidden', !host);
   $('lb-start').classList.toggle('hidden', !host);
   $('lb-wait').classList.toggle('hidden', host);
@@ -871,7 +949,7 @@ $('lb-leave').onclick = () => { leaveOnline(); showOnline(); };
 $('lb-copy').onclick = () => { const l = inviteLink(lobbyState.code); navigator.clipboard?.writeText(l).then(() => { $('lb-copy').textContent = '✓ Copied'; setTimeout(() => $('lb-copy').textContent = '🔗 Copy invite link', 1500); }).catch(() => prompt('Invite link', l)); };
 $('b-online').onclick = () => { initAudio(); save(); showOnline(); };
 $('on-back').onclick = () => { leaveOnline(); toTitle(); };
-const lobbyCreateOpts = () => ({ mapId: settings.mapId, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer });
+const lobbyCreateOpts = () => ({ special: settings.special, mapId: settings.mapId, imps: Math.min(settings.imps, maxImps(settings.count)), count: settings.count, killCd: settings.killCd, smarts: settings.smarts, tasksPer: settings.tasksPer });
 $('on-create').onclick = () => connect(() => nsend({ t: 'create', pub: true, opts: lobbyCreateOpts() }));
 $('on-private').onclick = () => connect(() => nsend({ t: 'create', pub: false, opts: lobbyCreateOpts() }));
 $('on-join').onclick = () => { const c = $('on-code').value.trim().toUpperCase(); if (c.length === 4) connect(() => nsend({ t: 'join', code: c })); };
@@ -905,7 +983,7 @@ function onNet(m) {
     case 'reveal': if (game && NET && MT) { game.players.forEach((p, i) => p.voted = m.votes[i]); MT.result = { ejected: m.ejected, tie: m.tie }; MT.revealT = 0; MT.phase = 'reveal'; MT.sel = -1; $('m-phase').textContent = 'Votes are in'; sfx.reveal(); buildCards(); } break;
     case 'eject': if (game && NET) { if (S === 'alert') startMeeting(); startEject(m); } break;
     case 'win': if (game && NET) {
-      game.players.forEach((p, i) => p.imp = m.imps[i]);
+      game.players.forEach((p, i) => { p.imp = m.imps[i]; if (m.roles) p.role = m.roles[i]; });
       game.winner = { side: m.side, why: m.why };
       if (S === 'play') { endT = m.heat ? 2.5 : 2.2; if (m.heat) { $('flash').style.background = '#ff7a10'; $('flash').style.transition = 'opacity 2s'; $('flash').style.opacity = 0.8; } }
       else if (S !== 'eject') showEnd();
@@ -918,7 +996,9 @@ function startOnline(m) {
   me = m.me; myTp = 0;
   game = new Game({ ...m.opts, seed: m.seed, humans: m.humans });
   game.noWin = true;
-  for (const p of game.players) { p.imp = m.imps.includes(p.id); p.ai = null; }
+  for (const p of game.players) { p.imp = m.imps.includes(p.id); p.ai = null; p.role = p.imp ? 'fire' : 'water'; }
+  for (const [id, r] of m.fireRoles || []) game.players[id].role = r;
+  game.players[me].role = m.role || game.players[me].role;
   const h = game.players[me]; h.tasks = m.tasks; h.done = new Set();
   const tt = { total: 1, done: 0 }; game.taskTotals = () => tt; game._tt = tt;
   setupGame();
@@ -926,22 +1006,23 @@ function startOnline(m) {
 function applySnap(m) {
   m.p.forEach((a, i) => {
     const p = game.players[i]; if (!p) return;
-    const [x, z, f, vx, vz, alive, inVent, tp, ej, hold] = a;
-    p.alive = !!alive; p.inVent = inVent; p.ejected = !!ej;
+    const [x, z, f, vx, vz, alive, inVent, tp, ej, hold, carry] = a;
+    p.alive = !!alive; p.inVent = inVent; p.ejected = !!ej; p.carry = carry ? 1 : -1;
     if (i === me) { if (tp !== myTp) { myTp = tp; p.x = x; p.z = z; camPos.x += 0; } return; }
     p.tx = x; p.tz = z; p.face = f; p.vx = vx; p.vz = vz; p.holding = hold;
     if (p.tp !== tp) { p.tp = tp; p.x = x; p.z = z; }
   });
-  game.bodies = m.b.map(([pid, x, z]) => ({ pid, x, z, room: roomName(game.map, x, z) }));
+  game.bodies = m.b.map(([pid, x, z]) => ({ pid, x, z, style: 'fire', room: roomName(game.map, x, z) }));
   const wasSab = game.sab;
   game.sab = m.sab ? { ...m.sab, fixT: 0 } : null;
   if (!!wasSab !== !!game.sab) buildTaskList();
   game.sabCd = m.sabCd; game.buttonCd = m.bcd;
   const tt = game._tt; if (tt.done !== m.done || tt.total !== m.total) { tt.done = m.done; tt.total = m.total; buildTaskList(); }
-  const h = H(); h.killCd = m.kc; h.meetings = m.ml;
+  const h = H(); h.killCd = m.kc; h.meetings = m.ml; h.abilCd = m.ac ?? 0; h.uses = m.us ?? 0;
 }
 function netEvent(e) {
   if (e.type === 'kill') { const v = game.players[e.victim]; v.alive = false; v.deadT = game.time; }
+  if (e.type === 'revive') { const v = game.players[e.victim]; v.alive = true; }
   if (e.type === 'report' || e.type === 'emergency') { game.state = 'meeting'; game.meeting = e.meeting; for (const p of game.players) p.voted = null; }
   if (e.type === 'win') return;            // the 'win' message carries the roles
   game.events.push(e);
@@ -969,7 +1050,7 @@ if (Q.has('icon')) { /* icon.js handles it */ import('./icon.js').then(m => m.dr
 else if (Q.has('auto')) {
   startGame();
   if (Q.has('meeting')) setTimeout(() => game.callMeeting(game.players[1], null), 900);
-  if (Q.has('kill')) setTimeout(() => { const h = H(), imp = game.players.find(p => p.imp && !p.human), v = game.players.find(p => !p.imp && !p.human); v.x = h.x + 2; v.z = h.z; imp.x = h.x + 2.5; imp.z = h.z; game.kill(imp, v); }, 900);
+  if (Q.has('kill')) setTimeout(() => { const h = H(), imp = game.players.find(p => p.imp && !p.human), v = game.players.find(p => !p.imp && !p.human); v.x = h.x + 2; v.z = h.z; imp.x = h.x + 3.2; imp.z = h.z; if (ROLES[Q.get('kill')]) imp.role = Q.get('kill'); if (Q.get('kill') === 'me') { h.imp = true; game.kill(h, v); } else game.kill(imp, v); }, Q.has('killdelay') ? +Q.get('killdelay') : 900);
   if (Q.has('lights')) setTimeout(() => { game.sabCd = 0; game.sabotage('lights'); }, 900);
   if (Q.has('heat')) setTimeout(() => { game.sabCd = 0; game.sabotage('heat'); }, 900);
   if (Q.has('dead')) setTimeout(() => { const imp = game.players.find(p => p.imp && !p.human) || game.players[1]; if (!H().imp) game.kill(imp, H()); }, 900);

@@ -4,6 +4,8 @@ import { TASK_NAMES } from './maps.js';
 
 const pick = (R, a) => a[Math.floor(R() * a.length)];
 const nm = (g, id) => g.players[id].name;
+// what the witness saw happen, by killer role (anyone who watched knows how it looked)
+const verb = (g, id) => ({ sponge: 'SOAK UP', bucket: 'SCOOP UP' })[g.players[id].role] || 'BURN';
 
 function trust(l, speaker) { return Math.max(0, Math.min(1, 1 - l.ai.sus[speaker] / 100)); }
 export function accuse(g, speaker, target, amount) {
@@ -39,8 +41,8 @@ export function planChat(g, dur) {
       return { pid: caller.id, text: pick(R, [`${nm(g, M.body)} is DEAD in ${M.room}!!`, `found ${nm(g, M.body)}'s puddle in ${M.room}`, `body in ${M.room}. it's ${nm(g, M.body)}`]) + (lie ? '' : '') };
     }
     const c = caller.ai.claims.find(c => c.kind === 'vent' || c.kind === 'kill');
-    if (c) { accuse(g, caller.id, c.who, c.kind === 'kill' ? 70 : 60); return { pid: caller.id, text: c.kind === 'kill' ? `I SAW ${nm(g, c.who).toUpperCase()} KILL ${nm(g, c.victim)} in ${c.room}!!!` : `${nm(g, c.who).toUpperCase()} VENTED in ${c.room}!! I saw it` }; }
-    return { pid: caller.id, text: pick(R, ['emergency meeting, something feels off', 'who is the imposter??', 'just checking in. where is everyone?']) };
+    if (c) { accuse(g, caller.id, c.who, c.kind === 'kill' ? 70 : 60); return { pid: caller.id, text: c.kind === 'kill' ? `I SAW ${nm(g, c.who).toUpperCase()} ${verb(g, c.who)} ${nm(g, c.victim)} in ${c.room}!!!` : `${nm(g, c.who).toUpperCase()} VENTED in ${c.room}!! I saw it` }; }
+    return { pid: caller.id, text: pick(R, ['emergency meeting, something feels off', 'who is the fire??', 'just checking in. where is everyone?']) };
   });
   // everyone talks once (some twice)
   let t = 2.2;
@@ -64,7 +66,11 @@ function statement(g, p) {
   if (!p.imp) {
     const recent = A.claims.filter(c => g.time - c.t < 120);
     const k = recent.find(c => c.kind === 'kill' && g.players[c.who].alive);
-    if (k && M.by !== p.id) { accuse(g, p.id, k.who, 70); return { pid: p.id, text: `it was ${nm(g, k.who).toUpperCase()}. I watched them kill ${nm(g, k.victim)} in ${k.room}` }; }
+    if (k && M.by !== p.id) { accuse(g, p.id, k.who, 70); return { pid: p.id, text: `it was ${nm(g, k.who).toUpperCase()}. I watched them ${verb(g, k.who).toLowerCase()} ${nm(g, k.victim)} in ${k.room}` }; }
+    const bm = recent.find(c => c.kind === 'burnedMe' && g.players[c.who].alive);
+    if (bm) { accuse(g, p.id, bm.who, 85); return { pid: p.id, text: `${nm(g, bm.who).toUpperCase()} SET ME ON FIRE in ${bm.room}!! someone put me out` }; }
+    const cr = recent.find(c => c.kind === 'carry' && g.players[c.who].alive);
+    if (cr && M.by !== p.id && pick(R, [1, 1, 0])) { accuse(g, p.id, cr.who, 45); return { pid: p.id, text: `${nm(g, cr.who)} was carrying a FULL BUCKET in ${cr.room}… with eyes in it` }; }
     const v = recent.find(c => c.kind === 'vent' && g.players[c.who].alive);
     if (v && M.by !== p.id) { accuse(g, p.id, v.who, 55); return { pid: p.id, text: `${nm(g, v.who)} VENTED in ${v.room}` }; }
     const n = recent.find(c => c.kind === 'near' && g.players[c.who].alive);
@@ -90,7 +96,7 @@ function statement(g, p) {
     const accuser = g.players.filter(q => q.alive && !q.imp && q.ai && q.ai.sus[p.id] > 60)[0];
     if (accuser && R() < 0.6) { accuse(g, p.id, accuser.id, 20); return { pid: p.id, text: pick(R, [`${accuser.name} is lying, that's so sus`, `it wasn't me! ${accuser.name} is trying to frame me`, `${accuser.name} self reported I bet`]) }; }
     vouch(g, p.id, p.id, 6);
-    return { pid: p.id, text: pick(R, ["wasn't me I was doing tasks", 'I literally just did wires', 'why would I kill them', 'I was across the map']) };
+    return { pid: p.id, text: pick(R, ["wasn't me I was doing tasks", 'I literally just did wires', 'why would I burn them', 'I was across the map']) };
   }
   const crew = g.players.filter(q => q.alive && !q.imp && q.id !== p.id);
   if (crew.length && R() < 0.45 + g.o.smarts * 0.1) {
@@ -107,7 +113,7 @@ function statement(g, p) {
 export function sayText(g, pid, kind, target) {
   const t = target != null && g.players[target] ? g.players[target].name : '';
   const p = g.players[pid], tk = g.map.tasks[p.tasks[0]];
-  return { accuse: `${t} is the imposter!`, vent: `I saw ${t} VENT!!`, with: `${t} is safe, I was with them`, where: 'where?', skipq: 'skip? no proof', tasks: `I was doing tasks in ${tk ? tk.room : p.room}` }[kind] || '';
+  return { accuse: `${t} is FIRE!`, vent: `I saw ${t} VENT!!`, with: `${t} is safe, I was with them`, where: 'where?', skipq: 'skip? no proof', tasks: `I was doing tasks in ${tk ? tk.room : p.room}` }[kind] || '';
 }
 // a human used quick chat: move the computer puddles' suspicion and line up their replies
 export function humanSays(g, kind, target, speaker = 0) {
@@ -168,7 +174,7 @@ export function parseSay(g, pid, text) {
   if (target != null) {
     if (/vent/.test(t)) kind = 'vent';
     else if (/ (safe|with|clear|innocent|trust|not (him|her|them|it)|wasn t|wasnt) /.test(t)) kind = 'with';
-    else if (/(sus|kill|imposter|impostor|imp |vote|did it|saw|liar|lying|faking|fake)/.test(t)) kind = 'accuse';
+    else if (/(sus|kill|fire|burn|imposter|impostor|imp |vote|did it|saw|liar|lying|faking|fake|bucket|sponge)/.test(t)) kind = 'accuse';
   }
   return { kind, target };
 }

@@ -130,6 +130,41 @@ export const sfx = {
   win() { if (!ok()) return; const t = ctx.currentTime, o = out(0.32, 0, 0.45); [523, 659, 784, 1046].forEach((f, i) => { osc('triangle', f, f, t + i * 0.16, 0.9, 0.4, o); osc('sawtooth', f / 2, f / 2, t + i * 0.16, 0.6, 0.08, o); }); },
   lose() { if (!ok()) return; const t = ctx.currentTime, o = out(0.32, 0, 0.45); [392, 370, 311, 233].forEach((f, i) => osc('sawtooth', f, f * 0.97, t + i * 0.3, 0.9, 0.18, o, 0.02)); },
   imposterReveal() { if (!ok()) return; const t = ctx.currentTime, o = out(0.45, 0, 0.5); for (const f of [55, 58.3, 82.4]) osc('sawtooth', f, f, t, 2.5, 0.3, o, 0.3); noise(t, 2, 0.3, o, { type: 'lowpass', f0: 300, f1: 80, a: 0.4 }); },
+  burn(vol = 1) {
+    if (!ok()) return; const t = ctx.currentTime, o = out(0.6 * vol, 0, 0.35);
+    noise(t, 0.5, 0.8, o, { type: 'bandpass', f0: 300, f1: 1800, q: 0.8, a: 0.04 });          // whoomph
+    osc('sine', 90, 40, t, 0.4, 0.8, o);
+    for (let i = 0; i < 50; i++) noise(t + R(0, 1.6), 0.015, R(0.2, 0.7), o, { type: 'highpass', f0: R(2000, 6000) });   // crackle
+    noise(t + 0.3, 1.6, 0.5, o, { type: 'highpass', f0: 4000, f1: 2500, a: 0.1 });               // steam hiss
+    for (const f of [233, 247, 349]) osc('sawtooth', f, f * 0.98, t, 0.5, 0.08, o, 0.003);
+  },
+  slurp() {
+    if (!ok()) return; const t = ctx.currentTime, o = out(0.5, 0, 0.3);
+    for (let i = 0; i < 6; i++) { const tt = t + i * 0.09; osc('sine', R(500, 800), R(150, 250), tt, 0.08, 0.5, o, 0.005); noise(tt, 0.07, 0.4, o, { type: 'bandpass', f0: R(800, 1400), f1: 300, q: 3 }); }
+    osc('sine', 300, 60, t + 0.55, 0.3, 0.6, o);
+  },
+  scoop() {
+    if (!ok()) return; const t = ctx.currentTime, o = out(0.55, 0, 0.35);
+    noise(t, 0.35, 0.7, o, { type: 'lowpass', f0: 3000, f1: 500 });
+    for (const f of [520, 1400, 2300]) osc('sine', f, f * 0.98, t + 0.05, 0.35, 0.2, o, 0.002);     // metal bucket clang
+    osc('sine', 160, 70, t, 0.2, 0.7, o);
+  },
+  dump() { if (!ok()) return; const t = ctx.currentTime, o = out(0.5, 0, 0.45); noise(t, 0.9, 0.7, o, { type: 'lowpass', f0: 1800, f1: 300, a: 0.05 }); osc('sine', 120, 50, t + 0.2, 0.4, 0.6, o); for (const f of [380, 980]) osc('sine', f, f, t, 0.5, 0.15, o, 0.002); },
+  flush() {
+    if (!ok()) return; const t = ctx.currentTime, o = out(0.55, 0, 0.4);
+    osc('sine', 1200, 1200, t, 0.05, 0.3, o, 0.002);                                            // handle click
+    noise(t + 0.08, 1.4, 0.8, o, { type: 'bandpass', f0: 400, f1: 1600, q: 1.2, a: 0.1 });     // rush
+    noise(t + 0.6, 0.9, 0.6, o, { type: 'bandpass', f0: 1800, f1: 300, q: 2, a: 0.05 });        // swirl down
+    osc('sine', 180, 70, t + 1.2, 0.3, 0.6, o); for (let i = 0; i < 5; i++) this.drip(0.6);
+  },
+  rain() {
+    if (!ok()) return; const t = ctx.currentTime, o = out(0.5, 0, 0.3);
+    noise(t, 3.2, 0.7, o, { type: 'bandpass', f0: 3000, q: 0.5, a: 0.6 });
+    for (let i = 0; i < 40; i++) setTimeout(() => this.drip(0.5), R(0, 3000));
+    osc('sine', 60, 40, t + 0.2, 1.5, 0.4, o, 0.3);                                            // distant thunder
+    noise(t + 0.2, 1.8, 0.4, o, { type: 'lowpass', f0: 200, f1: 60, a: 0.3, buf: brownBuf });
+  },
+  revive() { if (!ok()) return; const t = ctx.currentTime, o = out(0.4, 0, 0.5); noise(t, 1.2, 0.8, o, { type: 'highpass', f0: 2500, a: 0.02 }); [523, 659, 784, 1046, 1318].forEach((f, i) => osc('triangle', f, f, t + 0.4 + i * 0.08, 0.6, 0.3, o)); },
   crewReveal() { if (!ok()) return; const t = ctx.currentTime, o = out(0.4, 0, 0.5); for (const f of [262, 330, 392, 523]) osc('triangle', f, f, t, 2.2, 0.18, o, 0.25); },
 };
 

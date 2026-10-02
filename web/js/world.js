@@ -164,6 +164,16 @@ function lumpyIco() { const g = new THREE.IcosahedronGeometry(1, 2), p = g.attri
 const cyl = (rt, rb, h, mat, x = 0, y = 0, z = 0, seg = 20) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; return m; };
 
 export const WALL_H = 2.6, CUT_H = 0.45;
+// the small bucket a Bucket carries around (with a scooped puddle's eyes peeking out)
+export function carryBucket() {
+  const g = new THREE.Group(), metal = new THREE.MeshStandardMaterial({ color: 0x9aa3aa, roughness: 0.35, metalness: 0.85, side: THREE.DoubleSide });
+  const pail = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.22, 0.42, 20, 1, true), metal); pail.castShadow = true; g.add(pail);
+  const bot = new THREE.Mesh(new THREE.CircleGeometry(0.22, 20), metal); bot.rotation.x = Math.PI / 2; bot.position.y = -0.21; g.add(bot);
+  const water = new THREE.Mesh(new THREE.CircleGeometry(0.28, 20), new THREE.MeshPhysicalMaterial({ color: 0x5fb6ee, roughness: 0.03, clearcoat: 1, transparent: true, opacity: 0.85 })); water.rotation.x = -Math.PI / 2; water.position.y = 0.16; g.add(water);
+  for (const sx of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })); e.position.set(sx * 0.08, 0.19, 0.05); g.add(e); const pp = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshStandardMaterial({ color: 0x000000 })); pp.position.set(sx * 0.08, 0.2, 0.1); g.add(pp); }
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.015, 6, 20, Math.PI), metal); handle.position.y = 0.2; g.add(handle);
+  return g;
+}
 
 export class World {
   constructor() {
@@ -257,7 +267,7 @@ export class World {
     const sun = this.sun = new THREE.DirectionalLight(T.light, 0.8);
     sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera; sc.left = -22; sc.right = 22; sc.top = 22; sc.bottom = -22; sc.near = 1; sc.far = 60;
-    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
+    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 4;
     S.add(sun, sun.target);
     this.lamps = [];
     for (const r of map.rooms) if (!r.out) this.lamps.push(new THREE.Vector3(r.x, 2.3, r.z));
@@ -280,6 +290,8 @@ export class World {
     } else this.buildFountain(map.button);
     for (const p of map.props) this.prop(p);
     this.decor(map, T);
+    this.initFx();
+    if (!this.lobby && map.dumps) this.buildDumps(map.dumps);
     // task marker rings (pooled)
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending });
     this.markerGeo = new THREE.RingGeometry(0.48, 0.6, 40); this.markerGeo.rotateX(-Math.PI / 2);
@@ -555,6 +567,86 @@ export class World {
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.scene.add(g);
   }
+  // ------------------------------------------------------------------ role effects
+  initFx() {
+    const S = this.scene;
+    const flameTex = new THREE.CanvasTexture(canvas(64, 128, (g, w, h) => {
+      const gr = g.createRadialGradient(w / 2, h * 0.68, 2, w / 2, h * 0.6, w * 0.55);
+      gr.addColorStop(0, 'rgba(255,255,240,1)'); gr.addColorStop(0.25, 'rgba(255,220,120,.95)'); gr.addColorStop(0.55, 'rgba(255,120,20,.6)'); gr.addColorStop(1, 'rgba(200,40,0,0)');
+      g.fillStyle = gr; g.beginPath(); g.moveTo(w / 2, 0); g.bezierCurveTo(w * 0.9, h * 0.4, w, h * 0.75, w / 2, h); g.bezierCurveTo(0, h * 0.75, w * 0.1, h * 0.4, w / 2, 0); g.fill();
+    }));
+    const smokeTex = new THREE.CanvasTexture(canvas(64, 64, g => { for (let k = 0; k < 5; k++) { const x = 20 + Math.random() * 24, y = 20 + Math.random() * 24, r = 14 + Math.random() * 14; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); } }));
+    this.flames = []; this.smokes = [];
+    for (let i = 0; i < 180; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: flameTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: 0xffffff })); sp.visible = false; S.add(sp); this.flames.push({ sp, v: new THREE.Vector3(), life: 0, max: 1 }); }
+    for (let i = 0; i < 90; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false, color: 0x555555 })); sp.visible = false; S.add(sp); this.smokes.push({ sp, v: new THREE.Vector3(), life: 0, max: 1, steam: false }); }
+    this.emitters = [];
+    this.fireLight = new THREE.PointLight(0xff7a20, 0, 14, 1.6); this.fireLight.position.set(0, -50, 0); S.add(this.fireLight);
+    // rain streaks
+    const N = 900, pos = new Float32Array(N * 6);
+    const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.rainLines = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xbfd8ff, transparent: true, opacity: 0.55 }));
+    this.rainLines.visible = false; this.rainLines.frustumCulled = false; S.add(this.rainLines); this.rainT = 0;
+    this.rainDrops = Array.from({ length: N }, () => ({ x: 0, y: 0, z: 0 }));
+  }
+  fire(x, z, dur = 2.2, size = 1) { this.emitters.push({ kind: 'fire', x, z, t: 0, dur, size }); }
+  steamFx(x, z, dur = 6) { this.emitters.push({ kind: 'steam', x, z, t: 0, dur, size: 0.7 }); }
+  suck(x, z, kx, kz) { this.emitters.push({ kind: 'suck', x, z, kx, kz, t: 0, dur: 0.8 }); }
+  swirl(x, z) { for (let i = 0; i < 4; i++) setTimeout(() => this.splash(x, z, 1.4 - i * 0.25), i * 120); this.burst(x, 0.3, z, 14, 1.2); }
+  rainAt(x, z) { this.rainT = 4; this.rainC = { x, z }; for (const d of this.rainDrops) { d.x = x + (Math.random() - 0.5) * 34; d.z = z + (Math.random() - 0.5) * 26; d.y = Math.random() * 9; } }
+  buildDumps(dumps) {
+    this.dumpMeshes = dumps.map(d => {
+      const g = new THREE.Group(); g.position.set(d.x, 0, d.z);
+      const metal = std(0x9aa3aa, 0.35, 0.85);
+      const pail = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.58, 1.1, 32, 1, true), new THREE.MeshStandardMaterial({ color: 0x8a939a, roughness: 0.35, metalness: 0.85, side: THREE.DoubleSide })); pail.position.y = 0.55; pail.castShadow = pail.receiveShadow = true; g.add(pail);
+      g.add(cyl(0.58, 0.58, 0.04, metal, 0, 0.02, 0, 32));
+      for (const y of [0.25, 0.85]) { const band = new THREE.Mesh(new THREE.TorusGeometry(y > 0.5 ? 0.72 : 0.62, 0.025, 6, 32), metal); band.rotation.x = Math.PI / 2; band.position.y = y; g.add(band); }
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.04, 8, 32), metal); rim.rotation.x = Math.PI / 2; rim.position.y = 1.1; g.add(rim);
+      const water = new THREE.Mesh(new THREE.CircleGeometry(0.72, 28), new THREE.MeshPhysicalMaterial({ color: 0x1a4a6a, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.9 })); water.rotation.x = -Math.PI / 2; water.position.y = 0.9; g.add(water);
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.025, 6, 24, Math.PI), metal); handle.position.y = 1.1; handle.rotation.y = 0.4; g.add(handle);
+      this.scene.add(g); g.userData.water = water; return g;
+    });
+  }
+  updateFx(dt) {
+    if (!this.flames) return;
+    let lightI = 0, lx = 0, lz = 0;
+    for (const e of this.emitters) {
+      e.t += dt; const k = 1 - e.t / e.dur;
+      if (e.kind === 'fire') {
+        lightI = Math.max(lightI, 26 * Math.max(0, k) * (0.8 + Math.random() * 0.4)); lx = e.x; lz = e.z;
+        for (let n = 0; n < 3 * e.size; n++) { const f = this.flames.find(f => f.life <= 0); if (!f) break; f.life = f.max = 0.35 + Math.random() * 0.45; f.sp.visible = true; const a = Math.random() * 6.28, r = Math.random() * 0.45 * e.size; f.sp.position.set(e.x + Math.cos(a) * r, 0.1 + Math.random() * 0.4, e.z + Math.sin(a) * r); f.v.set((Math.random() - 0.5) * 0.4, 1.6 + Math.random() * 1.6, (Math.random() - 0.5) * 0.4); f.base = (0.35 + Math.random() * 0.5) * e.size * Math.max(0.3, k + 0.3); }
+        if (Math.random() < 0.6) this.puffSmoke(e.x, e.z, false);
+      } else if (e.kind === 'steam') { if (Math.random() < 0.25) this.puffSmoke(e.x + (Math.random() - 0.5) * 0.6, e.z + (Math.random() - 0.5) * 0.6, true); }
+      else if (e.kind === 'suck') {
+        for (let n = 0; n < 3; n++) { const d = this.drips.find(d => !d.on); if (!d) break; const T = 0.35; d.on = true; d.m.visible = true; d.m.position.set(e.x + (Math.random() - 0.5) * 0.5, 0.3 + Math.random() * 0.5, e.z + (Math.random() - 0.5) * 0.5); d.v.set((e.kx - d.m.position.x) / T, (0.8 - d.m.position.y + 6 * T * T) / T, (e.kz - d.m.position.z) / T); d.m.scale.setScalar(1.3); }
+      }
+    }
+    this.emitters = this.emitters.filter(e => e.t < e.dur);
+    this.fireLight.intensity = lightI; if (lightI > 0) this.fireLight.position.set(lx, 1.2, lz);
+    for (const f of this.flames) {
+      if (f.life <= 0) continue; f.life -= dt; if (f.life <= 0) { f.sp.visible = false; continue; }
+      const k = f.life / f.max; f.sp.position.addScaledVector(f.v, dt); f.v.x += (Math.random() - 0.5) * dt * 3;
+      f.sp.scale.set(f.base * (0.6 + k * 0.5), f.base * (1.1 + (1 - k) * 0.8), 1);
+      f.sp.material.opacity = Math.min(0.85, k * 1.4); f.sp.material.color.setRGB(1, 0.32 + k * 0.38, 0.06 + k * 0.18);
+    }
+    for (const m of this.smokes) {
+      if (m.life <= 0) continue; m.life -= dt; if (m.life <= 0) { m.sp.visible = false; continue; }
+      const k = 1 - m.life / m.max; m.sp.position.addScaledVector(m.v, dt); m.sp.scale.setScalar(0.5 + k * 2.2); m.sp.material.opacity = Math.sin(k * Math.PI) * (m.steam ? 0.35 : 0.5);
+    }
+    if (this.rainT > 0) {
+      this.rainT -= dt; this.rainLines.visible = true;
+      const P = this.rainLines.geometry.attributes.position, fade = Math.min(1, this.rainT);
+      this.rainLines.material.opacity = 0.55 * fade;
+      this.rainDrops.forEach((d, i) => { d.y -= dt * 14; if (d.y < 0) { if (Math.random() < 0.08) this.splash(d.x, d.z, 0.25); d.y = 8 + Math.random() * 2; } P.setXYZ(i * 2, d.x, d.y, d.z); P.setXYZ(i * 2 + 1, d.x + 0.03, d.y + 0.45, d.z + 0.05); });
+      P.needsUpdate = true;
+      if (Math.random() < dt * 20) this.wetSpot(this.rainC.x + (Math.random() - 0.5) * 30, this.rainC.z + (Math.random() - 0.5) * 22, 0.3 + Math.random() * 0.6, 10);
+    } else this.rainLines.visible = false;
+  }
+  puffSmoke(x, z, steam) {
+    const m = this.smokes.find(m => m.life <= 0); if (!m) return;
+    m.life = m.max = steam ? 2.5 : 1.8 + Math.random(); m.steam = steam; m.sp.visible = true;
+    m.sp.material.color.setHex(steam ? 0xe8eef2 : 0x3a3633);
+    m.sp.position.set(x + (Math.random() - 0.5) * 0.4, steam ? 0.3 : 1.2, z + (Math.random() - 0.5) * 0.4); m.v.set((Math.random() - 0.5) * 0.3, steam ? 0.6 : 1.1, (Math.random() - 0.5) * 0.3);
+  }
   // ------------------------------------------------------------------ effects
   wetSpot(x, z, size, life) {
     const s = this.spots[this.spotI++ % this.spots.length];
@@ -605,12 +697,13 @@ export class World {
     if (this.kois) for (const k of this.kois) { const u = k.userData.koi; u.a += dt * 0.5; k.position.set(u.px + Math.cos(u.a) * u.r * 1.3, 0.03, u.pz + Math.sin(u.a) * u.r); k.rotation.y = -u.a; }
     if (this.fountain) { this.fountain.jet.scale.y = 1 + Math.sin(t * 9) * 0.04; this.fountain.top.scale.setScalar(1 + Math.sin(t * 13) * 0.1); }
     this.stripMat.emissiveIntensity = opts.lightsOut ? 0.1 : 1.4;
-    this.sun.position.set(focus.x + 8, 30, focus.z + 12); this.sun.target.position.set(focus.x, 0, focus.z);
+    this.sun.position.set(focus.x + 4, 34, focus.z + 6); this.sun.target.position.set(focus.x, 0, focus.z);
     this.alarm.position.set(focus.x, 3, focus.z);
     this.alarm.intensity = opts.heat ? 25 * (0.5 + 0.5 * Math.sin(t * 6)) : 0;
     if (this.buttonMesh) this.buttonMesh.material.emissiveIntensity = 0.6 + Math.sin(t * 3) * 0.3;
     if (this.lavaTex) { this.lavaTex.offset.x = t * 0.004; this.lavaTex.offset.y = Math.sin(t * 0.1) * 0.02; }
     if (this.cloudTex) this.cloudTex.offset.x = t * 0.003;
+    this.updateFx(dt);
     for (const [, g] of this.stations) { if (g.userData.led) g.userData.led.material.color.setHex(Math.sin(t * 5 + g.position.x) > 0 ? 0x30ff60 : 0x103018); }
     for (const v of this.valveMeshes) v.userData.wheel.rotation.z = opts.heat ? t * 2 : 0;
     // drips

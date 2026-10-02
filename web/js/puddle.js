@@ -19,14 +19,16 @@ let envMap = null;
 export function setEnv(e) { envMap = e; }
 
 const waterMat = () => new THREE.MeshPhysicalMaterial({
-  color: 0x5fb6ee, roughness: 0.03, metalness: 0, transparent: true, opacity: 0.6, clearcoat: 1, clearcoatRoughness: 0.02,
-  ior: 1.33, specularIntensity: 1, specularColor: 0xffffff, envMapIntensity: 1.1, depthWrite: false, side: THREE.DoubleSide,
+  // real refraction: you see the floor bent through the puddle, tinted a little blue the thicker it gets
+  color: 0xd8f0ff, roughness: 0.035, metalness: 0, transmission: 1, thickness: 0.55, ior: 1.33,
+  attenuationColor: new THREE.Color(0x2f8fd6), attenuationDistance: 0.6,
+  clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 1, envMapIntensity: 1.3, side: THREE.FrontSide,
 });
 const coreMat = () => new THREE.MeshStandardMaterial({ color: 0x1f6fb0, roughness: 0.2, transparent: true, opacity: 0.35, depthWrite: false });
 
 function glowMat(color) {
   return new THREE.ShaderMaterial({
-    uniforms: { uColor: { value: new THREE.Color(color) }, uPow: { value: 2.2 }, uStr: { value: 1.6 } },
+    uniforms: { uColor: { value: new THREE.Color(color) }, uPow: { value: 2.0 }, uStr: { value: 2.3 } },
     vertexShader: `varying vec3 vN; varying vec3 vV;
       void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
     fragmentShader: `uniform vec3 uColor; uniform float uPow; uniform float uStr; varying vec3 vN; varying vec3 vV;
@@ -83,7 +85,7 @@ export class Puddle {
     this.geo = g;
     this.phase = Math.random() * 100;
     this.body = new THREE.Mesh(g, waterMat()); this.body.castShadow = true; this.body.renderOrder = 2;
-    this.core = new THREE.Mesh(g, coreMat()); this.core.scale.setScalar(0.72); this.core.position.y = 0.04; this.core.renderOrder = 1;
+    this.core = new THREE.Mesh(g, coreMat()); this.core.scale.setScalar(0.72); this.core.position.y = 0.04; this.core.renderOrder = 1; this.core.visible = false;
     this.glow = new THREE.Mesh(g, glowMat(color)); this.glow.scale.setScalar(1.1); this.glow.renderOrder = 3;
     this.halo = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), new THREE.MeshBasicMaterial({ map: halo(), color: this.color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.halo.rotation.x = -Math.PI / 2; this.halo.position.y = 0.03; this.halo.renderOrder = 0;
@@ -126,8 +128,9 @@ export class Puddle {
   setGlow(on) { this.glow.visible = on; this.halo.visible = on; }
   setGhost(on) {
     this.ghost = on;
-    this.body.material.opacity = on ? 0.16 : 0.58; this.core.visible = !on; this.halo.material.opacity = on ? 0.15 : 0.55;
-    this.glow.material.uniforms.uStr.value = on ? 0.6 : 1.6;
+    const m = this.body.material; m.transmission = on ? 0 : 1; m.transparent = on; m.opacity = on ? 0.16 : 1; m.depthWrite = !on; m.needsUpdate = true;
+    this.halo.material.opacity = on ? 0.15 : 0.55;
+    this.glow.material.uniforms.uStr.value = on ? 0.6 : 2.3;
     this.body.castShadow = !on;
   }
   // build the melting surface for time t

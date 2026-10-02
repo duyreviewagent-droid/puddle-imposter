@@ -75,7 +75,7 @@ class Room {
     this.clients.forEach((c, i) => {
       c.slot = i; c.tp = 0; c.lastSay = 0;
       const p = g.players[i];
-      send(c.ws, { t: 'start', me: i, seed, opts: { ...o, mapId, imps: g.o.imps, count: g.players.length }, humans, imps: p.imp ? g.players.filter(q => q.imp).map(q => q.id) : [], tasks: p.tasks });
+      send(c.ws, { t: 'start', me: i, seed, opts: { ...o, mapId, imps: g.o.imps, count: g.players.length }, humans, imps: p.imp ? g.players.filter(q => q.imp).map(q => q.id) : [], fireRoles: p.imp ? g.players.filter(q => q.imp).map(q => [q.id, q.role]) : [], role: p.role, tasks: p.tasks });
     });
     this.lobby();
   }
@@ -129,6 +129,13 @@ class Room {
         else if (m.op === 'hop' && p.inVent >= 0) { const j = m.j | 0; if (g.map.vents[p.inVent].links.includes(j)) g.ventHop(p, j); }
         break;
       }
+      case 'ability': {
+        if (m.op === 'dump') g.dump(p);
+        else if (m.op === 'flush') g.flush(p, m.j | 0);
+        else if (m.op === 'rain') g.rain(p);
+        else if (m.op === 'revive') g.revive(p);
+        break;
+      }
       case 'sab': if (p.imp && (m.kind === 'lights' || m.kind === 'heat')) g.sabotage(m.kind); break;
     }
   }
@@ -161,7 +168,7 @@ class Room {
         const ej = M.result.ejected;
         coolDown(g); g.endMeeting(ej);
         this.state = 'eject'; this.ejectT = ej >= 0 ? 10 : 6.5; this.M = null;
-        this.all({ t: 'eject', ejected: ej, tie: M.result.tie, imp: ej >= 0 && g.players[ej].imp, left: g.impAlive() });
+        this.all({ t: 'eject', ejected: ej, tie: M.result.tie, imp: ej >= 0 && g.players[ej].imp, role: ej >= 0 && g.players[ej].imp ? g.players[ej].role : null, left: g.impAlive() });
         g.events = g.events.filter(e => e.type !== 'win');
       }
       return;
@@ -192,7 +199,7 @@ class Room {
   }
   finish() {
     const g = this.game;
-    this.all({ t: 'win', side: g.winner.side, why: g.winner.why, heat: !!g.winner.heat, imps: g.players.map(p => p.imp), names: g.players.map(p => p.name) });
+    this.all({ t: 'win', side: g.winner.side, why: g.winner.why, heat: !!g.winner.heat, imps: g.players.map(p => p.imp), roles: g.players.map(p => p.role), names: g.players.map(p => p.name) });
     this.game = null; this.state = 'lobby';
     for (const c of this.clients) c.slot = null;
     this.lobby();
@@ -200,9 +207,9 @@ class Room {
   snapshot() {
     const g = this.game, r2 = v => Math.round(v * 100) / 100;
     const { total, done } = g.taskTotals();
-    const base = { t: 's', p: g.players.map(p => [r2(p.x), r2(p.z), r2(p.face), r2(p.vx), r2(p.vz), p.alive ? 1 : 0, p.inVent, p.tp || 0, p.ejected ? 1 : 0, p.holding]),
+    const base = { t: 's', p: g.players.map(p => [r2(p.x), r2(p.z), r2(p.face), r2(p.vx), r2(p.vz), p.alive ? 1 : 0, p.inVent, p.tp || 0, p.ejected ? 1 : 0, p.holding, p.carry >= 0 ? 1 : 0]),
       b: g.bodies.map(b => [b.pid, r2(b.x), r2(b.z)]), sab: g.sab ? { type: g.sab.type, t: r2(g.sab.t), held: g.sab.held } : null, sabCd: r2(g.sabCd), bcd: r2(g.buttonCd), done, total };
-    for (const c of this.clients) { const p = c.slot != null && g.players[c.slot]; if (p) send(c.ws, { ...base, kc: r2(p.killCd), ml: p.meetings }); }
+    for (const c of this.clients) { const p = c.slot != null && g.players[c.slot]; if (p) send(c.ws, { ...base, kc: r2(p.killCd), ml: p.meetings, ac: r2(p.abilCd), us: p.uses }); }
   }
 }
 

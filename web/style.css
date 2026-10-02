@@ -235,3 +235,12 @@ h1 .r { font-size: 62px; color: #ff4a3a; text-shadow: 0 0 24px rgba(255,60,30,.7
 .mtype { display: flex; gap: 6px; margin-top: 8px; }
 .mtype input { flex: 1; min-width: 0; background: #0b1118; border: 1px solid #2a3846; color: #fff; border-radius: 10px; padding: 8px 10px; font: 600 14px inherit; font-family: inherit; }
 .mtype button { background: #2a6ad0; font-size: 14px; padding: 8px 14px; }
+
+.sel { background: #0b1118; color: #fff; border: 1px solid #22303c; border-radius: 10px; padding: 7px 10px; font: 700 14px inherit; font-family: inherit; }
+.act.abil.on { background: rgba(30,120,160,.9); box-shadow: 0 0 26px rgba(60,200,255,.5); }
+#flushpick { background: rgba(0,0,0,.55); z-index: 14; }
+#flush-list { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 12px 0; }
+#flush-list button { background: #1e5a8a; font-size: 15px; }
+.help .roles p { font-size: 14px; margin: 5px 0; }
+.roletitle.fire { color: #ff6a1a; text-shadow: 0 0 40px rgba(255,90,0,.95); }
+.roletitle.water { color: #8fd8ff; text-shadow: 0 0 40px rgba(90,190,255,.9); }
