@@ -12,6 +12,7 @@ export function accuse(g, speaker, target, amount) {
   for (const l of g.players) {
     if (!l.ai || !l.alive || l.id === speaker || l.imp) continue;
     if (l.id === target) { l.ai.sus[speaker] += amount * 0.6; continue; }   // I know it wasn't me — you're lying
+    if (l.ai.cleared && l.ai.cleared.has(target)) { l.ai.sus[speaker] += amount * 0.5; continue; }   // I saw them far away — you're lying
     l.ai.sus[target] += amount * (0.35 + 0.65 * trust(l, speaker));
   }
 }
@@ -29,8 +30,27 @@ export function groupSus(g, id) {
 }
 
 // Returns a list of { at (seconds into discussion), gen: () => {pid, text} | null }
+// detective work at the start of a meeting: alibis and opportunity from each bot's memory of sightings
+export function deduce(g) {
+  const M = g.meeting; if (!M || M.body < 0) return;
+  const v = g.players[M.body], body = g.bodies.find(b => b.pid === M.body) || { x: v.x, z: v.z };
+  for (const p of g.players) {
+    if (!p.ai || !p.alive || p.imp || g.o.smarts < 1) continue;
+    const A = p.ai, lastAlive = A.seen[v.id] ? A.seen[v.id].t : M.t - 45, from = Math.max(lastAlive, M.t - 60);
+    for (const q of g.players) {
+      if (q === p || !q.alive) continue;
+      const win = A.hist[q.id].filter(s => s.t >= from - 2 && s.t <= M.t);
+      if (!win.length) continue;
+      const near = win.some(s => Math.hypot(s.x - body.x, s.z - body.z) < 7);
+      const far = win.every(s => Math.hypot(s.x - body.x, s.z - body.z) > 14) && win.length >= Math.min(6, (M.t - from) * 0.4);
+      if (far && !near) { A.sus[q.id] -= 25; A.cleared.add(q.id); A.claims.push({ kind: 'alibi', who: q.id, t: g.time }); }
+      else if (near) { A.sus[q.id] += 18; A.claims.push({ kind: 'near', who: q.id, room: M.room, t: g.time }); }
+    }
+  }
+}
 export function planChat(g, dur) {
   const R = g.R, M = g.meeting, lines = [];
+  deduce(g);
   const living = g.players.filter(p => p.alive && p.ai);
   const add = (at, gen) => lines.push({ at, gen });
   const caller = g.players[M.by];
@@ -77,6 +97,8 @@ function statement(g, p) {
     if (cr && M.by !== p.id && pick(R, [1, 1, 0])) { accuse(g, p.id, cr.who, 45); return { pid: p.id, text: `${nm(g, cr.who)} was carrying a FULL BUCKET in ${cr.room}… with eyes in it` }; }
     const v = recent.find(c => c.kind === 'vent' && g.players[c.who].alive);
     if (v && M.by !== p.id) { accuse(g, p.id, v.who, 55); return { pid: p.id, text: `${nm(g, v.who)} VENTED in ${v.room}` }; }
+    const al = recent.find(c => c.kind === 'alibi' && g.players[c.who].alive && R() < 0.5);
+    if (al) { vouch(g, p.id, al.who, 15); return { pid: p.id, text: `${nm(g, al.who)} was nowhere near — I saw them on the other side of the map` }; }
     const n = recent.find(c => c.kind === 'near' && g.players[c.who].alive);
     if (n) { accuse(g, p.id, n.who, 22); return { pid: p.id, text: `${nm(g, n.who)} was right next to the body` }; }
     // somebody I saw near the body's room shortly before
@@ -145,6 +167,8 @@ export function botVote(g, p, tally) {
     for (const q of alive) { const s = p.ai.sus[q.id] + (tally[q.id] || 0) * 4 + (R() - 0.5) * 8; if (s > bs) { bs = s; best = q.id; } }
     return best;
   }
+  // a partner everyone already suspects is doomed — voting them out too makes you look like Water
+  if (g.o.smarts > 0) { const doomed = alive.find(q => q.imp && groupSus(g, q.id) > 70 && (tally[q.id] || 0) >= 2); if (doomed && R() < 0.6) return doomed.id; }
   const crew = alive.filter(q => !q.imp);
   let best = -1, bs = 22;
   for (const q of crew) { const s = groupSus(g, q.id) + (tally[q.id] || 0) * 8; if (s > bs) { bs = s; best = q.id; } }

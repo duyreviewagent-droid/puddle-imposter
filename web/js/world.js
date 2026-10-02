@@ -211,9 +211,9 @@ export class World {
     this.nature(map, T);
     // ---------------- floors: indoor rooms, outdoor areas, halls
     const fr = floorCanvases(T.floor, T.floorC), hr = floorCanvases(T.hall, T.hallC), or = floorCanvases(T.outFloor, T.outC);
-    const floorMat = std(0xffffff, 1, 0.05, { map: tex(fr.map), roughnessMap: tex(fr.rough, 1, false), envMapIntensity: 0.35 });
-    const hallMat = std(0xffffff, 1, T.hall === 'grate' || T.hall === 'plate' ? 0.5 : 0.05, { map: tex(hr.map), roughnessMap: tex(hr.rough, 1, false), envMapIntensity: 0.35 });
-    const outMat = std(0xffffff, 1, 0, { map: tex(or.map), roughnessMap: tex(or.rough, 1, false), envMapIntensity: 0.25 });
+    const floorMat = std(0xffffff, 1, 0.05, { map: tex(fr.map), roughnessMap: tex(fr.rough, 1, false), bumpMap: tex(fr.map, 1, false), bumpScale: 1.6, envMapIntensity: 0.35 });
+    const hallMat = std(0xffffff, 1, T.hall === 'grate' || T.hall === 'plate' ? 0.5 : 0.05, { map: tex(hr.map), roughnessMap: tex(hr.rough, 1, false), bumpMap: tex(hr.map, 1, false), bumpScale: 2.2, envMapIntensity: 0.35 });
+    const outMat = std(0xffffff, 1, 0, { map: tex(or.map), roughnessMap: tex(or.rough, 1, false), bumpMap: tex(or.map, 1, false), bumpScale: 2.5, envMapIntensity: 0.25 });
     const fGeos = [], hGeos = [], oGeos = [];
     for (const [x0, z0, x1, z1] of map.halls) { const p = new THREE.PlaneGeometry(x1 - x0, z1 - z0); p.rotateX(-Math.PI / 2); p.translate((x0 + x1) / 2, 0.002, (z0 + z1) / 2); hGeos.push(p); }
     for (const r of map.rooms) { const p = new THREE.PlaneGeometry(r.w, r.d); p.rotateX(-Math.PI / 2); p.translate(r.x, 0.006, r.z); (r.out ? oGeos : fGeos).push(p); }
@@ -251,8 +251,8 @@ export class World {
       }
     }
     const wc = wallCanvas(T);
-    const wallMat = std(0xffffff, 0.75, 0.05, { map: tex(wc, 1), envMapIntensity: 0.4 });
-    wallMat.map.repeat.set(0.5, 1);
+    const wallMat = std(0xffffff, 0.75, 0.05, { map: tex(wc, 1), bumpMap: tex(wc, 1, false), bumpScale: 1.2, envMapIntensity: 0.4 });
+    wallMat.map.repeat.set(0.5, 1); wallMat.bumpMap.repeat.set(0.5, 1);
     if (tall.length) { const tallM = new THREE.Mesh(worldUV(mergeGeometries(tall), 2), wallMat); tallM.castShadow = tallM.receiveShadow = true; S.add(tallM); }
     if (low.length) { const lowM = new THREE.Mesh(worldUV(mergeGeometries(low), 2), wallMat); lowM.castShadow = lowM.receiveShadow = true; S.add(lowM); }
     if (caps.length) { const capM = new THREE.Mesh(mergeGeometries(caps), std(T.wallTop, 0.5, 0.2)); capM.receiveShadow = true; S.add(capM); }
@@ -291,6 +291,12 @@ export class World {
     for (const p of map.props) this.prop(p);
     this.decor(map, T);
     this.initFx();
+    { const N = 500, pos = new Float32Array(N * 3), rs = map.rooms.filter(r => !r.out); this.motes = [];
+      for (let i = 0; i < N; i++) { const r = rs[i % rs.length]; pos[i * 3] = r.x0 + Math.random() * r.w; pos[i * 3 + 1] = 0.3 + Math.random() * 2.2; pos[i * 3 + 2] = r.z0 + Math.random() * r.d; this.motes.push(Math.random() * 6.28); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const dt = new THREE.CanvasTexture(canvas(16, 16, c => { const gr = c.createRadialGradient(8, 8, 0, 8, 8, 8); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, 16, 16); }));
+      this.moteMesh = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.045, map: dt, transparent: true, opacity: 0.55, depthWrite: false, color: T.light, blending: THREE.AdditiveBlending }));
+      if (!this.lobby && T !== THEMES.sky) S.add(this.moteMesh); }
     if (!this.lobby && map.dumps) this.buildDumps(map.dumps);
     // task marker rings (pooled)
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -733,6 +739,7 @@ export class World {
     if (this.lavaTex) { this.lavaTex.offset.x = t * 0.004; this.lavaTex.offset.y = Math.sin(t * 0.1) * 0.02; }
     if (this.cloudTex) this.cloudTex.offset.x = t * 0.003;
     this.updateFx(dt);
+    if (this.moteMesh && this.moteMesh.parent) { const P = this.moteMesh.geometry.attributes.position; for (let i = 0; i < P.count; i++) { const ph = this.motes[i] += dt * 0.3; P.setX(i, P.getX(i) + Math.sin(ph) * dt * 0.05); P.setY(i, P.getY(i) + Math.cos(ph * 0.7) * dt * 0.03); } P.needsUpdate = true; this.moteMesh.material.opacity = opts.lightsOut ? 0.1 : 0.55; }
     for (const [, g] of this.stations) { if (g.userData.led) g.userData.led.material.color.setHex(Math.sin(t * 5 + g.position.x) > 0 ? 0x30ff60 : 0x103018); }
     for (const v of this.valveMeshes) v.userData.wheel.rotation.z = opts.heat ? t * 2 : 0;
     // drips

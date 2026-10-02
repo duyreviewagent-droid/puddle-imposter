@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Game, SPEED, USE_R } from './game.js';
 import { MAPS, COLORS, TASK_NAMES, buildMap, roomName, LOBBY } from './maps.js';
@@ -37,7 +38,31 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.32, 0.45, 1.05)
 const gtao = new GTAOPass(new THREE.Scene(), new THREE.PerspectiveCamera(), innerWidth, innerHeight);
 gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 12 });
 gtao.blendIntensity = 0.85;
+// labels, flames, smoke and dust are flat cards: keep them out of the occlusion pass or they cast dark boxes
+{ const orig = gtao.renderOverride.bind(gtao); let list = [], at = 0;
+  gtao.renderOverride = (...args) => {
+    const now = performance.now();
+    if (now - at > 500) { at = now; list = []; gtao.scene.traverse(o => { if (o.isSprite || o.isPoints || o.isLine || (o.material && o.material.transparent && !o.material.transmission)) list.push(o); }); }
+    const was = list.map(o => o.visible); list.forEach(o => o.visible = false);
+    orig(...args);
+    list.forEach((o, i) => o.visible = was[i]);
+  }; }
 composer.addPass(renderPass); if (!Q.has('lq') && !Q.has('noao')) composer.addPass(gtao); composer.addPass(bloom); composer.addPass(new OutputPass());
+// camera finish: gentle S-curve contrast, a touch more colour, film grain and lens vignette — like real footage
+const grade = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uGrain: { value: 0.035 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform float uGrain; varying vec2 vUv;
+    float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)) + uTime * 37.0) * 43758.5453); }
+    void main(){
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      c = mix(c, c * c * (3.0 - 2.0 * c), 0.35);                       // soft S-curve
+      float l = dot(c, vec3(0.299, 0.587, 0.114)); c = mix(vec3(l), c, 1.08);   // a little more colour
+      vec2 d = vUv - 0.5; c *= 1.0 - dot(d, d) * 0.55;                  // lens vignette
+      c += (h(vUv * 900.0) - 0.5) * uGrain;                             // film grain
+      gl_FragColor = vec4(c, 1.0); }`,
+});
+if (!Q.has('nograde')) composer.addPass(grade);
 function setView(scene, camera) { renderPass.scene = gtao.scene = scene; renderPass.camera = gtao.camera = camera; gtao.enabled = scene !== lava.scene; }
 const dark = $('dark'), dctx = dark.getContext('2d');
 function resize() {
@@ -550,6 +575,7 @@ function frame(now) {
     if (S !== 'end' && S !== 'pause' && S !== 'map') drawWorld(dt, aspect);
     else if (S === 'map') drawMap($('bigmapc'), true);
   }
+  grade.uniforms.uTime.value = (grade.uniforms.uTime.value + 0.017) % 100;
   composer.render();
   if (Q.has('copytest')) setTimeout(() => copyText(Q.get('copytest')), 1500);
 requestAnimationFrame(frame);

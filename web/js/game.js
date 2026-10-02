@@ -60,7 +60,7 @@ export class Game {
   }
   newAI(p) {
     return { mode: 'idle', path: null, pi: 0, wait: 1 + this.R() * 2, goal: null, seen: new Array(this.n).fill(null), with: new Float32Array(this.n), sus: new Float32Array(this.n),
-      claims: [], lastTask: null, lastRoomT: [], stuckT: 0, lx: 0, lz: 0, thinkT: this.R() * 0.3, aggro: 0.4 + this.R() * 0.6, huntT: 0, target: -1, ventHop: 0, fakeT: 0 };
+      claims: [], hist: Array.from({ length: this.n }, () => []), cleared: new Set(), lastTask: null, lastRoomT: [], stuckT: 0, lx: 0, lz: 0, thinkT: this.R() * 0.3, aggro: 0.4 + this.R() * 0.6, huntT: 0, target: -1, ventHop: 0, fakeT: 0 };
   }
   spawn() {
     const b = this.map.button, alive = this.players;
@@ -419,6 +419,7 @@ export class Game {
         if (q === p || !q.alive) continue;
         if (this.sees(p, q)) {
           A.seen[q.id] = { t: this.time, x: q.x, z: q.z, room: q.room }; A.with[q.id] += 0.2;
+          const H = A.hist[q.id]; if (!H.length || this.time - H[H.length - 1].t > 1) { H.push({ t: this.time, x: q.x, z: q.z }); if (H.length > 90) H.shift(); }
           if (!p.imp && q.carry >= 0 && A.sus[q.id] < 75) { A.sus[q.id] = 75; A.claims.push({ kind: 'carry', who: q.id, room: q.room, t: this.time }); }
         }
         else A.with[q.id] = Math.max(0, A.with[q.id] - 0.1);
@@ -440,6 +441,13 @@ export class Game {
         }
       }
       if (p.imp) this.impThink(p);
+      else if (this.o.smarts > 0 && (A.mode === 'task' || A.mode === 'doing' || A.mode === 'wander' || A.mode === 'idle')) {
+        const scary = this.players.find(q => q !== p && q.alive && A.sus[q.id] >= 45 && this.sees(p, q) && Math.hypot(q.x - p.x, q.z - p.z) < 5);
+        const others = this.players.filter(q => q !== p && q.alive && q !== scary && this.sees(p, q)).length;
+        if (scary && others === 0 && (this.crewAlive() <= 4 || A.sus[scary.id] >= 70)) {
+          const B = this.map.button; A.mode = 'wander'; A.goal = { x: B.x + (this.R() - 0.5) * 4, z: B.z + 2.5 }; A.path = null;      // walk back to where people are
+        }
+      }
       if (p.role === 'rain' && this.sab && p.abilCd <= 0) { this.sab.rainT = (this.sab.rainT ?? (3 + this.R() * 6)) - 0.2; if (this.sab.rainT <= 0) this.rain(p); }
       if (!p.imp && this.sab && A.mode !== 'fix' && A.mode !== 'report' && this.R() < 0.02) {
         // a random computer crew member also heads over to help
@@ -582,7 +590,11 @@ export class Game {
     const A = p.ai;
     if (p.inVent >= 0 || A.mode === 'flee' || A.mode === 'vent' || A.mode === 'report') return;
     // sabotage now and then
-    if (!this.sab && this.sabCd <= 0 && this.R() < 0.012 * (0.5 + this.o.smarts * 0.5)) this.sabotage(this.R() < 0.6 ? 'lights' : 'heat');
+    if (!this.sab && this.sabCd <= 0 && this.R() < 0.012 * (0.5 + this.o.smarts * 0.5)) {
+      // a big group together? a heatwave splits them up (they run to the two valves)
+      const crowd = this.players.filter(q => q.alive && !q.imp && this.sees(p, q)).length;
+      this.sabotage(crowd >= 3 || this.R() < 0.4 ? 'heat' : 'lights');
+    }
     if (p.role === 'ice' && p.uses > 0 && p.abilCd <= 0 && p.killCd <= 0.5 && this.R() < 0.25) {
       const q = this.players.find(q => q.alive && !q.imp && q.inVent < 0 && Math.hypot(q.x - p.x, q.z - p.z) < 9 && this.sees(p, q));
       if (q) { this.freeze(p); A.mode = 'hunt'; A.target = q.id; A.huntT = 9; A.path = null; A.blind = new Set(this.players.map(w => w.id)); return; }
@@ -594,7 +606,17 @@ export class Game {
       if (q.imp || !q.alive || q.inVent >= 0) continue;
       const d = Math.hypot(p.x - q.x, p.z - q.z);
       if (d > 8 || !this.sees(p, q)) continue;
-      if (this.R() > urge * 0.25) continue;
+      let want = urge * 0.25;
+      if (this.o.smarts > 0) {
+        // careful Fire: avoid victims you were just seen next to (you'd be "last seen with them")
+        const seenTogether = this.players.some(w => w.ai && w !== q && !w.imp && w.alive && w.ai.seen[p.id] && w.ai.seen[q.id] && this.time - w.ai.seen[p.id].t < 15 && this.time - w.ai.seen[q.id].t < 15 && Math.hypot(w.ai.seen[p.id].x - w.ai.seen[q.id].x, w.ai.seen[p.id].z - w.ai.seen[q.id].z) < 6);
+        if (seenTogether && crewLeft > 3) want *= 0.35;
+        // prefer kills with an escape vent close by
+        if (this.map.vents.some(v => Math.hypot(v.x - q.x, v.z - q.z) < 7)) want *= 1.5;
+        // lights-out setup: kill the lights first, then go
+        if (!this.sab && this.sabCd <= 0 && this.R() < 0.3 * this.o.smarts) { this.sabotage('lights'); }
+      }
+      if (this.R() > want) continue;
       const prev = A.mode;
       A.blind = new Set(this.players.filter(w => this.R() < 0.3 - 0.08 * this.o.smarts).map(w => w.id));
       A.mode = 'hunt';
