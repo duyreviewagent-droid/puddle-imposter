@@ -337,7 +337,7 @@ export class Game {
     if (p.imp) { p.done.add(id); return; }          // fake: nothing counts
     p.done.add(id); if (p.ai) p.ai.lastTask = this.map.tasks[id];
     if (p.role === 'snitch' && !p.snitchOn && p.tasks.every(t => p.done.has(t))) { p.snitchOn = true; this.emit({ type: 'snitch', p: p.id }); if (p.ai) for (const f of this.players) if (f.imp && f.alive) { p.ai.sus[f.id] = 95; p.ai.claims.push({ kind: 'snitch', who: f.id, t: this.time }); } }
-    this.emit({ type: 'task', p: p.id });
+    this.emit({ type: 'task', p: p.id, id });
     this.checkWin();
   }
   kill(k, v, opt = {}) {

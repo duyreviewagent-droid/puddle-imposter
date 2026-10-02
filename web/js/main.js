@@ -143,6 +143,7 @@ $('b-resume').onclick = () => { $('scr-pause').classList.add('hidden'); S = 'pla
 addEventListener('pointerdown', () => { initAudio(); if (S === 'title') setMood('title'); }, { once: true });
 
 // ------------------------------------------------------------------ game state
+const rbAnim = new Map(); let spiritRise = 1;
 let shake = 0, bubblePing = null, spirit = null, spiritModel = null, pets = [], S = 'title', game = null, world = null, models = [], bodyModels = new Map(), taskPanel = null, stateT = 0, killedFx = null;
 let camPos = new THREE.Vector3(), visR = 7.5, stepAcc = 0, heatBeep = 0, lastRoom = '', roomT = 0, endT = -1, dripCd = 0;
 let me = 0, NET = null;          // NET is set while playing online
@@ -330,15 +331,18 @@ function handleEvents() {
       if (!near) { const d = Math.hypot(e.x - h.x, e.z - h.z); if (d < 18) sfx.splash(1, 0.25 * (1 - d / 18), (e.x - h.x) / 18); }
       const style = e.style || 'fire';
       world.rainbowAt(e.victim, 0, 0, false);
+      const showAnim = near || !h.alive;
+      let bodyM = null;
       if (style === 'fire') {
-        world.fire(e.x, e.z, 2.6, 1.1); world.steamFx(e.x, e.z, 9); world.burst(e.x, 0.7, e.z, 26, 2.4);
         if (near) { sfx.burn(); }
         world.wetSpot(e.x, e.z, 2.4, 99999);
-        const b = new Puddle(v.color, '', world); b.dead = 1; b.setCos(v.cos); b.group.position.set(e.x, 0, e.z); b.heading = Math.random() * 6; world.scene.add(b.group); bodyModels.set(v.id, b);
-        b.body.material.color.setHex(0x9aa4ac); b.body.material.attenuationColor.setHex(0x3a2e26); b.body.material.attenuationDistance = 0.35;       // scorched, steaming
-      } else if (style === 'sponge') { world.suck(e.x, e.z, e.kx, e.kz); if (near) sfx.slurp(); }
-      else { world.burst(e.x, 0.5, e.z, 20, 1.6); world.wetSpot(e.x, e.z, 1.2, 20); if (near) sfx.scoop(); }
-      models[v.id].setGhost(true); if (models[v.id].label) models[v.id].label.material.opacity = 0.5;
+        bodyM = new Puddle(v.color, '', world); bodyM.dead = 1; bodyM.setCos(v.cos); bodyM.group.position.set(e.x, 0, e.z); bodyM.heading = Math.random() * 6; world.scene.add(bodyM.group); bodyModels.set(v.id, bodyM);
+        bodyM.body.material.color.setHex(0x9aa4ac); bodyM.body.material.attenuationColor.setHex(0x3a2e26); bodyM.body.material.attenuationDistance = 0.35;       // scorched, steaming
+        if (showAnim) bodyM.hold = true; else { world.fire(e.x, e.z, 2.6, 1.1); world.steamFx(e.x, e.z, 9); }
+      } else if (style === 'sponge') { if (near) sfx.slurp(); }
+      else { if (near) sfx.scoop(); }
+      if (showAnim) killAnim(e, k, v, style, bodyM);
+      models[v.id].setGhost(true); models[v.id].fear = 0; if (models[v.id].label) models[v.id].label.material.opacity = 0.5;
       if (e.victim === me) { killedFx = { t: 0, killer: k.id }; $('flash').style.transition = 'none'; $('flash').style.opacity = 0.75; requestAnimationFrame(() => { $('flash').style.transition = 'opacity 1.6s'; $('flash').style.opacity = 0; }); if (taskPanel) taskPanel.close(); flashBanner(`${e.meteor ? '☄️ AN ASTEROID HIT YOU' : e.sky ? '🌈🔥 FIRE BURNED YOUR RAINBOW — YOU FELL' : { sponge: '🧽 YOU WERE SOAKED UP', bucket: '🪣 YOU WERE SCOOPED INTO A BUCKET' }[e.style] || '🔥 YOU WERE SET ON FIRE'}<small>${e.meteor ? 'nobody saw who called it' : 'by ' + k.name}</small>`, 3.5); }
     } else if (e.type === 'report' || e.type === 'emergency') {
       if (taskPanel) taskPanel.close();
@@ -351,18 +355,19 @@ function handleEvents() {
       if (e.type === 'report') sfx.report(); else sfx.emergency();
       setMood(null);
     } else if (e.type === 'vent' || e.type === 'venthop') {
-      if (e.p === me || (e.x != null && humanSees(e.x, e.z))) sfx.vent();
+      if (e.p === me || (e.x != null && humanSees(e.x, e.z))) { sfx.vent(); const p = game.players[e.p]; if (e.type === 'vent') { if (p.inVent >= 0) spinSink(p, e.x, e.z); else spinGrow(models[p.id], 0.1); world.ring(e.x, e.z, 0x8a95a0, 1.6, 0.5); } }
     } else if (e.type === 'sabotage') {
-      if (e.kind === 'lights') { sfx.lightsOff(); } else { sfx.heatAlarm(); heatBeep = 1; }
+      if (e.kind === 'lights') { sfx.lightsOff(); world.flickerT = 1.1; } else { sfx.heatAlarm(); heatBeep = 1; }
       buildTaskList();
     } else if (e.type === 'fixed') {
       if (e.kind === 'lights') sfx.lightsOn(); else sfx.task();
       buildTaskList();
     } else if (e.type === 'dump') { if (humanSees(e.x, e.z) || e.p === me) { sfx.dump(); world.burst(e.x, 1.0, e.z, 18, 1.5); } }
-    else if (e.type === 'flush') { world.swirl(e.x, e.z); world.swirl(e.x2, e.z2); if (e.p === me || humanSees(e.x, e.z) || humanSees(e.x2, e.z2)) sfx.flush(); }
+    else if (e.type === 'flush') { world.swirl(e.x, e.z); world.swirl(e.x2, e.z2); { const p = game.players[e.p]; if (e.p === me || humanSees(e.x, e.z)) spinSink(p, e.x, e.z); setTimeout(() => spinGrow(models[p.id], 0.05), 350); world.ring(e.x2, e.z2, 0x9ad8ff, 2, 0.6); } if (e.p === me || humanSees(e.x, e.z) || humanSees(e.x2, e.z2)) sfx.flush(); }
     else if (e.type === 'rain') { world.rainAt(e.x, e.z); sfx.rain(); flashBanner(`🌧️ IT STARTED RAINING<small>${e.kind === 'heat' ? 'The heatwave' : 'The blackout'} was washed away!</small>`, 3); buildTaskList(); }
     else if (e.type === 'revive') {
       const v = game.players[e.victim]; v.alive = true;
+      { const x2 = game.players[e.p]; world.foam(x2.x, x2.z, e.x, e.z, 0.8); world.dome(e.x, e.z, 0xffffff, 1.2); setTimeout(() => { spinGrow(models[v.id], 0.2); world.sparkle(e.x, e.z, 0xffffff, 20, 0.6); }, 650); }
       models[v.id].setGhost(false); if (models[v.id].label) models[v.id].label.material.opacity = 1;
       const bm = bodyModels.get(v.id); if (bm) { world.scene.remove(bm.group); bm.dispose(); bodyModels.delete(v.id); }
       world.steamFx(e.x, e.z, 3); world.burst(e.x, 0.6, e.z, 24, 2);
@@ -370,19 +375,20 @@ function handleEvents() {
       if (e.victim === me) { killedFx = null; $('ghostnote').classList.add('hidden'); flashBanner(`🧯 YOU WERE REVIVED<small>by ${game.players[e.p].name}</small>`, 3.5); buildTaskList(); }
     }
     else if (e.type === 'freeze') {
-      sfx.freeze(); iceShards = [];
+      sfx.freeze(); iceShards = []; { const f = game.players[e.p]; world.ring(f.x, f.z, 0xcff6ff, 45, 1.6, 0.06, 0.08); setTimeout(() => world.ring(f.x, f.z, 0x9ae0ff, 45, 1.8, 0.03, 0.09), 150); world.sparkle(f.x, f.z, 0xcff6ff, 24, 1); }
       flashBanner(h.imp ? `🧊 ${e.p === me ? 'YOU FROZE' : game.players[e.p].name + ' FROZE'} ALL THE WATER<small>${e.p === me ? e.uses + ' freezes left' : 'go get them'}</small>` : '🧊 AN ICE FROZE ALL THE WATER<small>wait 2 seconds, then smash the screen 12 times to break out</small>', 3);
       if (NET && !h.imp && h.alive) { h.frozen = 1; h.iceT = 0; h.breaks = 0; }
       if (taskPanel) taskPanel.close();
     }
-    else if (e.type === 'thaw') { if (e.p === me) { sfx.thaw(); $('iceov').classList.add('hidden'); } else if (humanSees(game.players[e.p].x, game.players[e.p].z)) sfx.thaw(); if (NET) game.players[e.p].frozen = 0; }
-    else if (e.type === 'evap') { world.steamFx(e.x, e.z, 1.5); world.burst(e.x, 0.9, e.z, 10, 0.8); if (e.p === me) { sfx.whoosh(); sfx.revive(); } }
-    else if (e.type === 'condense') { if (e.p === me) { spirit = null; h.spirit = null; sfx.drip(1); sfx.splash(0.6, 0.7); flashBanner('💧 BACK IN YOUR BODY', 1.5); } world.burst(e.x, 1.4, e.z, 12, 0.6); }
-    else if (e.type === 'rainbow') { if (e.p === me) { sfx.revive(); flashBanner('🦄 UP THE RAINBOW!<small>you can see the whole map · F to slide back down</small>', 2.5); } else if (humanSees(e.x, e.z)) sfx.revive(); }
-    else if (e.type === 'land') { world.rainbowAt(e.p, 0, 0, false); if (e.p === me) { sfx.whoosh(); h.sky = null; } }
-    else if (e.type === 'bubble') { if (e.p === me) { sfx.drip(1); sfx.blip(1800); flashBanner(`🫧 TRACKER ON ${game.players[e.q].name.toUpperCase()}<small>${e.left} bubble${e.left === 1 ? '' : 's'} left</small>`, 2); if (NET && !(h.tracks || []).includes(e.q)) (h.tracks ||= []).push(e.q); } }
+    else if (e.type === 'thaw') { { const q = game.players[e.p]; if (humanSees(q.x, q.z) || e.p === me) { world.burst(q.x, 0.8, q.z, 18, 2.2); world.ring(q.x, q.z, 0xeaf8ff, 2.5, 0.5); hop(models[q.id], 0.3); } } if (e.p === me) { sfx.thaw(); $('iceov').classList.add('hidden'); } else if (humanSees(game.players[e.p].x, game.players[e.p].z)) sfx.thaw(); if (NET) game.players[e.p].frozen = 0; }
+    else if (e.type === 'evap') { for (let i = 0; i < 18; i++) setTimeout(() => world.puffSmoke(e.x + (Math.random() - 0.5) * 0.6, e.z + (Math.random() - 0.5) * 0.6, true), i * 50); world.ring(e.x, e.z, 0xdfeeff, 2.5, 0.8); if (e.p === me) spiritRise = 0; world.steamFx(e.x, e.z, 1.5); world.burst(e.x, 0.9, e.z, 10, 0.8); if (e.p === me) { sfx.whoosh(); sfx.revive(); } }
+    else if (e.type === 'condense') { hop(models[e.p], 0.25); world.ring(e.x, e.z, 0x9ad8ff, 2, 0.5); if (e.p === me) { spirit = null; h.spirit = null; sfx.drip(1); sfx.splash(0.6, 0.7); flashBanner('💧 BACK IN YOUR BODY', 1.5); } world.burst(e.x, 1.4, e.z, 12, 0.6); }
+    else if (e.type === 'rainbow') { rbAnim.set(e.p, 0); world.sparkle(e.x, e.z, 0xffb0f0, 30, 0.5); world.ring(e.x, e.z, 0xff9af0, 3, 0.7); if (e.p === me) { sfx.revive(); flashBanner('🦄 UP THE RAINBOW!<small>you can see the whole map · F to slide back down</small>', 2.5); } else if (humanSees(e.x, e.z)) sfx.revive(); }
+    else if (e.type === 'land') { world.rainbowAt(e.p, 0, 0, false); world.sparkle(e.x, e.z, 0xffb0f0, 20, 1.5); spinGrow(models[e.p], 0.3); rbAnim.delete(e.p); if (e.p === me) { sfx.whoosh(); h.sky = null; } }
+    else if (e.type === 'bubble') { if (e.p === me) { const tq = game.players[e.q]; const bm = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, roughness: 0, iridescence: 1, transparent: true, opacity: 0.9 })); world.fly(bm, h.x, h.z, tq.x, tq.z, 0.55, 1.4, () => world.sparkle(tq.x, tq.z, 0xbfe8ff, 10, 2)); sfx.drip(1); sfx.blip(1800); flashBanner(`🫧 TRACKER ON ${game.players[e.q].name.toUpperCase()}<small>${e.left} bubble${e.left === 1 ? '' : 's'} left</small>`, 2); if (NET && !(h.tracks || []).includes(e.q)) (h.tracks ||= []).push(e.q); } }
     else if (e.type === 'bubbleAlert') { if (e.to === me) { sfx.heatAlarm(); flashBanner(`🫧 ${game.players[e.killer].name.toUpperCase()} JUST KILLED!<small>in ${e.room} — your bubble saw it</small>`, 3); bubblePing = { x: e.x, z: e.z, t: 3 }; } }
-    else if (e.type === 'flood') { sfx.flood(); flashBanner(`🌊 THE MAP IS UNDERWATER<small>${h.imp ? 'you can\'t burn anyone for 15 seconds' : 'Fire can\'t kill anyone for 15 seconds'}${e.p === me ? ' · ' + e.uses + ' flood' + (e.uses === 1 ? '' : 's') + ' left' : ''}</small>`, 3); if (NET && !game.flood) game.flood = { t: ROLES.underwater.dur }; }
+    else if (e.type === 'flood') { { const f = game.players[e.p]; for (let i = 0; i < 3; i++) setTimeout(() => world.ring(f.x, f.z, 0x5ab8ff, 60, 2.4, 0.05, 0.3 + i * 0.3), i * 300); }
+      sfx.flood(); flashBanner(`🌊 THE MAP IS UNDERWATER<small>${h.imp ? 'you can\'t burn anyone for 15 seconds' : 'Fire can\'t kill anyone for 15 seconds'}${e.p === me ? ' · ' + e.uses + ' flood' + (e.uses === 1 ? '' : 's') + ' left' : ''}</small>`, 3); if (NET && !game.flood) game.flood = { t: ROLES.underwater.dur }; }
     else if (e.type === 'drain') { sfx.drain(); flashBanner('🌊 THE WATER DRAINED AWAY<small>careful — Fire can kill again</small>', 2); if (NET) game.flood = null; }
     else if (e.type === 'meteorWarn') {
       if (humanSees(e.x, e.z) || e.p === me || e.target === me) sfx.meteorWarn();
@@ -390,29 +396,76 @@ function handleEvents() {
       if (e.p === me) flashBanner(`🌋 ASTEROID ON ${game.players[e.target].name.toUpperCase()}<small>${e.charges} left</small>`, 1.8);
       if (!NET) { /* solo: meteors are read straight from the game */ }
     }
-    else if (e.type === 'meteorHit') { world.impact(e.x, e.z, e.fizzle); const d = Math.hypot(e.x - h.x, e.z - h.z); if (d < 30) { sfx.boom(); shake = Math.max(shake, 1.2 * (1 - d / 30)); } }
-    else if (e.type === 'shieldGive') { sfx.revive(); flashBanner(`💉 YOU SHIELDED ${game.players[e.q].name.toUpperCase()}`, 2); }
-    else if (e.type === 'shieldPop') { world.burst(e.x, 0.8, e.z, 30, 2.5); world.swirl(e.x, e.z); if (humanSees(e.x, e.z) || e.v === me) sfx.zap(); if (e.v === me) flashBanner(`🛡️ YOUR SHIELD SAVED YOU<small>${game.players[e.by].name} just tried to burn you!</small>`, 3.5); }
-    else if (e.type === 'guard') { if (e.p === me) flashBanner(`🛡️ YOU TOOK THE HIT FOR ${game.players[e.q].name.toUpperCase()}`, 3); }
-    else if (e.type === 'inspect') { sfx.blip(1500); flashBanner(e.killed ? `🔎 ${game.players[e.q].name.toUpperCase()} HAS KILLED!<small>since the last meeting</small>` : `🔎 ${game.players[e.q].name} has NOT killed<small>since the last meeting</small>`, 3.5); }
-    else if (e.type === 'shot') { const v = game.players[e.misfire ? e.p : e.q]; v.alive = false; models[v.id].setGhost(true); world.burst(v.x, 0.8, v.z, 30, 3); world.wetSpot(v.x, v.z, 2, 99999); const b = new Puddle(v.color, '', world); b.dead = 1; b.setCos(v.cos); b.group.position.set(v.x, 0, v.z); world.scene.add(b.group); bodyModels.set(v.id, b); if (humanSees(v.x, v.z) || e.p === me || e.q === me) { sfx.boom(); } flashBanner(e.misfire ? `🤠 THE SHERIFF MISSED<small>${game.players[e.p].name} shot Water and died</small>` : `🤠 THE SHERIFF SHOT ${game.players[e.q].name.toUpperCase()}`, 3); buildTaskList(); }
-    else if (e.type === 'sense') { sfx.revive(); flashBanner(`🔮 A FIRE IS IN ${e.room.toUpperCase()}`, 3.5); }
-    else if (e.type === 'blast') { world.burst(e.x, 1, e.z, 60, 6); for (let i = 0; i < 6; i++) world.splash(e.x, e.z, 4.5 - i * 0.5); if (Math.hypot(e.x - h.x, e.z - h.z) < 20) sfx.splash(2.5, 1); }
-    else if (e.type === 'vanish') { world.steamFx(e.x, e.z, 1.2); if (e.p === me) flashBanner('🌑 YOU ARE INVISIBLE<small>8 seconds — nobody can see you</small>', 2); }
-    else if (e.type === 'disguise') { if (e.p === me) flashBanner(`🎭 YOU LOOK LIKE ${game.players[e.as].name.toUpperCase()}<small>15 seconds — witnesses will blame them</small>`, 2.5); }
-    else if (e.type === 'smoke') { for (let i = 0; i < 40; i++) setTimeout(() => world.puffSmoke(e.x + (Math.random() - 0.5) * 9, e.z + (Math.random() - 0.5) * 9, false), i * 40); if (Math.hypot(e.x - h.x, e.z - h.z) < 20) sfx.whoosh(); if (h.blind > 0 || (!h.imp && Math.hypot(e.x - h.x, e.z - h.z) < 7)) flashBanner('💨 SMOKE BOMB<small>you can barely see!</small>', 2); }
-    else if (e.type === 'trapSet') { if (e.p === me) { sfx.blip(500); flashBanner('🪤 TRAP SET', 1.2); } }
+    else if (e.type === 'meteorHit') { world.impact(e.x, e.z, e.fizzle); world.ring(e.x, e.z, 0xff7a20, 6, 0.7, 0.25); const d = Math.hypot(e.x - h.x, e.z - h.z); if (d < 30) { sfx.boom(); shake = Math.max(shake, 1.2 * (1 - d / 30)); } }
+    else if (e.type === 'shieldGive') { { const tq = game.players[e.q]; world.dome(tq.x, tq.z, 0x7affc8, 1.4); world.sparkle(tq.x, tq.z, 0x7affc8, 14, 1); } sfx.revive(); flashBanner(`💉 YOU SHIELDED ${game.players[e.q].name.toUpperCase()}`, 2); }
+    else if (e.type === 'shieldPop') { world.dome(e.x, e.z, 0x7affc8, 0.7, true); world.ring(e.x, e.z, 0x7affc8, 3, 0.5); lunge(models[e.by]); world.burst(e.x, 0.8, e.z, 30, 2.5); world.swirl(e.x, e.z); if (humanSees(e.x, e.z) || e.v === me) sfx.zap(); if (e.v === me) flashBanner(`🛡️ YOUR SHIELD SAVED YOU<small>${game.players[e.by].name} just tried to burn you!</small>`, 3.5); }
+    else if (e.type === 'guard') { world.ring(e.x, e.z, 0xffd84a, 3, 0.6); world.dome(e.x, e.z, 0xffd84a, 0.6, true); if (e.p === me) flashBanner(`🛡️ YOU TOOK THE HIT FOR ${game.players[e.q].name.toUpperCase()}`, 3); }
+    else if (e.type === 'inspect') { { const tq = game.players[e.q]; world.ring(tq.x, tq.z, e.killed ? 0xff3a2a : 0x5dff9a, 1.6, 0.6); world.sparkle(tq.x, tq.z, e.killed ? 0xff3a2a : 0x5dff9a, 10, 1.6); } sfx.blip(1500); flashBanner(e.killed ? `🔎 ${game.players[e.q].name.toUpperCase()} HAS KILLED!<small>since the last meeting</small>` : `🔎 ${game.players[e.q].name} has NOT killed<small>since the last meeting</small>`, 3.5); }
+    else if (e.type === 'shot') { const v = game.players[e.misfire ? e.p : e.q]; { const sh = game.players[e.p]; const d = dyingCopy(v, v.x, v.z, 0); const ang = Math.atan2(v.x - sh.x, v.z - sh.z); world.tween(0.6, (q, dt) => { d.group.position.set(v.x + Math.sin(ang) * q * 1.2, Math.sin(q * Math.PI) * 0.4, v.z + Math.cos(ang) * q * 1.2); d.animScale.set(1, Math.max(0.15, 1 - q), 1); d.update(dt, world.t, 0, 0, ang); }, () => { world.scene.remove(d.group); d.dispose(); }); lunge(models[e.p]); } v.alive = false; models[v.id].setGhost(true); world.burst(v.x, 0.8, v.z, 30, 3); world.wetSpot(v.x, v.z, 2, 99999); const b = new Puddle(v.color, '', world); b.dead = 1; b.setCos(v.cos); b.group.position.set(v.x, 0, v.z); world.scene.add(b.group); bodyModels.set(v.id, b); if (humanSees(v.x, v.z) || e.p === me || e.q === me) { sfx.boom(); } flashBanner(e.misfire ? `🤠 THE SHERIFF MISSED<small>${game.players[e.p].name} shot Water and died</small>` : `🤠 THE SHERIFF SHOT ${game.players[e.q].name.toUpperCase()}`, 3); buildTaskList(); }
+    else if (e.type === 'sense') { world.ring(h.x, h.z, 0xb06aff, 6, 1, 0.1); world.sparkle(h.x, h.z, 0xb06aff, 16, 1.5); sfx.revive(); flashBanner(`🔮 A FIRE IS IN ${e.room.toUpperCase()}`, 3.5); }
+    else if (e.type === 'blast') { for (const q of game.players) if (q.alive && q.id !== e.p && Math.hypot(q.x - e.x, q.z - e.z) < 4.5) { const qm = models[q.id]; world.tween(3, (k, dt) => { qm.spinY += dt * 9 * (1 - k); qm.fear = 1 - k; }, () => { qm.spinY = 0; qm.fear = 0; }); } world.ring(e.x, e.z, 0x5ab8ff, 4.5, 0.6, 0.3); hop(models[e.p], 0.5); world.burst(e.x, 1, e.z, 60, 6); for (let i = 0; i < 6; i++) world.splash(e.x, e.z, 4.5 - i * 0.5); if (Math.hypot(e.x - h.x, e.z - h.z) < 20) sfx.splash(2.5, 1); }
+    else if (e.type === 'vanish') { world.ring(e.x, e.z, 0x221133, 2.5, 0.6, 0.4); world.steamFx(e.x, e.z, 1.2); if (e.p === me) flashBanner('🌑 YOU ARE INVISIBLE<small>8 seconds — nobody can see you</small>', 2); }
+    else if (e.type === 'disguise') { { const p = game.players[e.p]; for (const c of [0xff4f8a, 0x4fd0ff, 0xffe14a]) world.sparkle(p.x, p.z, c, 8, 0.8); spinGrow(models[p.id], 0.6); } if (e.p === me) flashBanner(`🎭 YOU LOOK LIKE ${game.players[e.as].name.toUpperCase()}<small>15 seconds — witnesses will blame them</small>`, 2.5); }
+    else if (e.type === 'smoke') { world.ring(e.x, e.z, 0x777777, 7, 0.9, 0.5); for (let i = 0; i < 40; i++) setTimeout(() => world.puffSmoke(e.x + (Math.random() - 0.5) * 9, e.z + (Math.random() - 0.5) * 9, false), i * 40); if (Math.hypot(e.x - h.x, e.z - h.z) < 20) sfx.whoosh(); if (h.blind > 0 || (!h.imp && Math.hypot(e.x - h.x, e.z - h.z) < 7)) flashBanner('💨 SMOKE BOMB<small>you can barely see!</small>', 2); }
+    else if (e.type === 'trapSet') { world.ring(e.x, e.z, 0xff5a10, 1, 0.4); if (e.p === me) { sfx.blip(500); flashBanner('🪤 TRAP SET', 1.2); } }
     else if (e.type === 'trapHit') { if (h.imp) flashBanner(`🪤 YOUR TRAP GOT ${game.players[e.v].name.toUpperCase()}`, 2); }
     else if (e.type === 'mute') { flashBanner(`🤐 ${game.players[e.q].name.toUpperCase()} WON'T TALK NEXT MEETING`, 2); }
     else if (e.type === 'phase') { if (e.p === me) flashBanner('🫥 PHASING<small>walk through walls for 6 seconds</small>', 2); }
     else if (e.type === 'alarm') { sfx.heatAlarm(); flashBanner(`🚨 SOMEONE WAS JUST KILLED NEARBY<small>in ${e.room}</small>`, 3); bubblePing = { x: e.x, z: e.z, t: 3 }; }
     else if (e.type === 'spirits') { flashBanner(`👻 THE SPIRITS SAY: ${game.players[e.q].name.toUpperCase()} IS WATER`, 4); }
     else if (e.type === 'snitch') { if (e.p === me) flashBanner('📢 ALL TASKS DONE — every Fire is on your map now', 3); else if (h.imp) { sfx.heatAlarm(); flashBanner('📢 A SNITCH FINISHED THEIR TASKS<small>they can see where you are</small>', 3); } }
-    else if (e.type === 'task') buildTaskList();
+    else if (e.type === 'task') { buildTaskList(); const p = game.players[e.p]; if (p && (e.p === me || humanSees(p.x, p.z))) { world.sparkle(p.x, p.z, 0xfff07a, 12, 1.2); hop(models[p.id]); } }
     else if (e.type === 'win') { endT = e.heat ? 2.5 : 2.2; if (e.heat) { $('flash').style.background = '#ff7a10'; $('flash').style.transition = 'opacity 2s'; $('flash').style.opacity = 0.8; } }
   }
   game.events.length = 0;
 }
+
+// ------------------------------------------------------------------ kill animations
+function dyingCopy(v, x, z, face) {
+  const d = new Puddle(v.color, '', world); d.setCos(v.cos); d.group.position.set(x, 0, z); d.heading = face ?? 0; d.fear = 1; world.scene.add(d.group); return d;
+}
+function lunge(km, toward) {
+  if (!km) return;
+  world.tween(0.4, k => { const s = Math.sin(k * Math.PI); km.animScale.set(1 - 0.12 * s, 1 - 0.22 * s, 1 + 0.5 * s); km.hopY = s * 0.3; }, () => { km.animScale.set(1, 1, 1); km.hopY = 0; });
+}
+function killAnim(e, k, v, style, bodyM) {
+  const km = models[k.id], face = Math.atan2((e.kx ?? k.x) - e.x, (e.kz ?? k.z) - e.z);
+  const d = dyingCopy(v, e.x, e.z, face);
+  const end = () => { world.scene.remove(d.group); d.dispose(); if (bodyM) bodyM.hold = false; };
+  if (style === 'fire') {
+    if (!e.meteor) lunge(km);
+    world.ring(e.x, e.z, 0xff6a1a, 3.5, 0.6);
+    // catches fire, boils, shrinks down into a scorched puddle
+    world.tween(1.25, (q, dt) => {
+      if (q > 0.08 && !d.lit) { d.lit = true; world.fire(e.x, e.z, 2.4, 1.2); world.steamFx(e.x, e.z, 9); }
+      const flat = e.meteor ? Math.max(0.15, 1 - q * 6) : Math.max(0.12, 1 - q * 0.9);
+      const shake = Math.sin(q * 60) * 0.06 * (1 - q);
+      d.animScale.set(1 + shake + (1 - flat) * 0.4, flat, 1 - shake + (1 - flat) * 0.4); d.melt = 2.5;
+      d.body.material.color.lerp(new THREE.Color(0x6a5a50), dt * 2); d.update(dt, world.t, 0, 0, face);
+      if (Math.random() < 0.5) world.burst(e.x, 0.5, e.z, 1, 1.2);
+    }, end);
+  } else if (style === 'sponge') {
+    // stretched toward the Sponge and sucked in; the Sponge swells
+    world.suck(e.x, e.z, e.kx, e.kz);
+    world.tween(0.8, (q, dt) => {
+      const k2 = q * q;
+      d.group.position.set(e.x + (e.kx - e.x) * k2, 0.1 * Math.sin(q * Math.PI), e.z + (e.kz - e.z) * k2);
+      d.animScale.set(Math.max(0.05, 1 - q) * 0.8, Math.max(0.05, 1 - q), Math.max(0.05, 1 - q) * (1 + q * 2)); d.update(dt, world.t, 0, 0, face);
+      if (km) { const s = 1 + Math.sin(q * Math.PI) * 0.35; km.animScale.set(s, s * 0.95, s); }
+    }, () => { end(); if (km) km.animScale.set(1, 1, 1); });
+  } else if (style === 'bucket') {
+    lunge(km);
+    // scooped up in an arc into the bucket
+    world.tween(0.75, (q, dt) => {
+      d.group.position.set(e.x + (e.kx - e.x) * q, Math.sin(q * Math.PI) * 1.8, e.z + (e.kz - e.z) * q);
+      const s = Math.max(0.2, 1 - q * 0.8); d.animScale.set(s, s, s); d.spinY += dt * 9; d.update(dt, world.t, 0, 0, face);
+    }, () => { end(); world.burst(e.kx, 1, e.kz, 14, 1); });
+  } else end();
+}
+// a quick happy hop
+function hop(pd, h = 0.45) { if (!pd) return; world.tween(0.45, q => { const s = Math.sin(q * Math.PI); pd.hopY = s * h; pd.animScale.set(1 + s * 0.08, 1 - s * 0.12 + (q > 0.85 ? (1 - q) * 0.6 : 0), 1 + s * 0.08); }, () => { pd.hopY = 0; pd.animScale.set(1, 1, 1); }); }
+function spinGrow(pd, from = 0.05) { if (!pd) return; world.tween(0.5, q => { const e = 1 - Math.pow(1 - q, 3); pd.animScale.setScalar(from + (1 - from) * e); pd.spinY = (1 - e) * 12; }, () => { pd.animScale.set(1, 1, 1); pd.spinY = 0; }); }
+function spinSink(p, x, z) { const d = dyingCopy(p, x, z, p.face); d.fear = 0; world.tween(0.5, (q, dt) => { d.animScale.set(1 - q * 0.9, 1 - q * 0.95, 1 - q * 0.9); d.spinY = q * 12; d.hopY = -q * 0.3; d.update(dt, world.t, 0, 0, p.face); }, () => { world.scene.remove(d.group); d.dispose(); }); }
 
 // ------------------------------------------------------------------ meeting
 let MT = null;
@@ -437,7 +490,7 @@ function startMeeting() {
   setMood('meeting');
 }
 function buildCards() {
-  const h = H(), box = $('m-cards'); box.innerHTML = '';
+  const h = H(), box = $('m-cards'); box.classList.toggle('static', !!MT.built); MT.built = true; box.innerHTML = '';
   const order = game.players.slice().sort((a, b) => (b.alive - a.alive) || a.id - b.id);
   for (const p of order) {
     const d = document.createElement('div'); d.className = 'pc' + (p.alive ? '' : ' dead') + (p.id === me ? ' me' : '') + (MT.sel === p.id ? ' sel' : '');
@@ -714,20 +767,21 @@ function drawWorld(dt, aspect) {
     if (fake) { if (!pd.fake || pd.fakeId !== fake.id) { if (pd.fake) world.scene.remove(pd.fake.group); pd.fake = new Puddle(fake.color, fake.name, world); pd.fake.setCos(fake.cos); pd.fakeId = fake.id; world.scene.add(pd.fake.group); } }
     if (pd.fake) { pd.fake.group.visible = !!fake && vis; if (fake && vis) { pd.fake.group.position.set(p.x, 0, p.z); pd.fake.update(dt, t, p.vx, p.vz, p.face); vis = false; pd.group.visible = false; } }
     pd.group.position.set(p.x, p.alive ? 0 : 0.35 + Math.sin(t * 2 + i) * 0.12, p.z);
+    if (p.alive && !p.imp && pd.fear < 1) { const scared = game.bodies.some(b => Math.hypot(b.x - p.x, b.z - p.z) < 3) || (p.frozen > 0); pd.fear += ((scared ? 0.8 : 0) - pd.fear) * Math.min(1, dt * 4); }
     if (vis) pd.update(dt, t, p.vx, p.vz, p.face);
     const rb = world.rainbowAt(p.id, p.x, p.z, !!(p.sky && p.alive));
-    if (rb) { pd.group.visible = true; pd.group.position.copy(rb.userData.top); if (!pd.horn) { pd.horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.42, 12), new THREE.MeshStandardMaterial({ color: 0xffe08a, metalness: 0.7, roughness: 0.25, emissive: 0xffc040, emissiveIntensity: 0.4 })); pd.horn.position.set(0, 1.18, 0.12); pd.horn.rotation.x = 0.35; pd.lean.add(pd.horn); } }
+    if (rb) { pd.group.visible = true; { let k = rbAnim.get(p.id); if (k == null) k = 1; else { k = Math.min(1, k + dt / 1.1); rbAnim.set(p.id, k); } const th = Math.PI - k * Math.PI / 2, R = 5.2; pd.group.position.set(p.x + 4.6 + Math.cos(th) * R, Math.sin(th) * R, p.z); pd.spinY = (1 - k) * 2; } if (!pd.horn) { pd.horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.42, 12), new THREE.MeshStandardMaterial({ color: 0xffe08a, metalness: 0.7, roughness: 0.25, emissive: 0xffc040, emissiveIntensity: 0.4 })); pd.horn.position.set(0, 1.18, 0.12); pd.horn.rotation.x = 0.35; pd.lean.add(pd.horn); } }
     if (pd.horn) pd.horn.visible = !!(p.sky && p.alive) || (p.role === 'unicorn' && p.id === me && p.alive);
     if (h.role === 'bubble' && (h.tracks || []).includes(p.id)) { if (!pd.track) { pd.track = new THREE.Mesh(new THREE.SphereGeometry(0.16, 18, 12), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, thickness: 0.05, roughness: 0, iridescence: 1, iridescenceIOR: 1.6, transparent: true, opacity: 0.9 })); pd.group.add(pd.track); } pd.track.visible = p.alive; pd.track.position.set(Math.sin(t * 2) * 0.3, 2.05 + Math.sin(t * 3) * 0.08, 0); }
     if (p.carry >= 0 && p.alive && !pd.bucket) { pd.bucket = carryBucket(); pd.bucket.position.set(0.58, 0.42, 0.12); pd.lean.add(pd.bucket); }
     if (pd.bucket) { pd.bucket.visible = p.carry >= 0 && p.alive; pd.bucket.rotation.z = Math.sin(t * 9) * 0.12; }
     if (pets[i]) updatePet(pets[i], p, dt, t, vis && p.alive);
   });
-  for (const [id, b] of bodyModels) { const bd = game.bodies.find(x => x.pid === id); b.group.visible = !!bd && humanSees(b.group.position.x, b.group.position.z); if (b.group.visible) b.update(dt, t, 0, 0, b.heading); }
+  for (const [id, b] of bodyModels) { const bd = game.bodies.find(x => x.pid === id); b.group.visible = !b.hold && !!bd && humanSees(b.group.position.x, b.group.position.z); if (b.group.visible) b.update(dt, t, 0, 0, b.heading); }
   // my vapor self while evaporated
   if (spirit && h.spirit) {
     if (!spiritModel || spiritModel.color.getHexString() !== new THREE.Color(h.color).getHexString()) { if (spiritModel) world.scene.remove(spiritModel.group); spiritModel = new Puddle(h.color, '☁️ ' + h.name, null); spiritModel.setGhost(true); spiritModel.setCos(h.cos); world.scene.add(spiritModel.group); }
-    spiritModel.group.visible = true; spiritModel.group.position.set(spirit.x, 0.6 + Math.sin(t * 2) * 0.15, spirit.z); spiritModel.update(dt, t, spirit.vx, spirit.vz, spirit.face);
+    spiritModel.group.visible = true; spiritRise = Math.min(1, spiritRise + dt * 1.2); spiritModel.group.position.set(spirit.x, (0.6 + Math.sin(t * 2) * 0.15) * spiritRise, spirit.z); spiritModel.animScale.setScalar(0.4 + 0.6 * spiritRise); spiritModel.update(dt, t, spirit.vx, spirit.vz, spirit.face);
     if (Math.random() < dt * 8) world.puffSmoke(spirit.x, spirit.z, true);
     models[me].lookDown = 1;
   } else { if (spiritModel) spiritModel.group.visible = false; if (models[me]) models[me].lookDown = 0; }

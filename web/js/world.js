@@ -573,6 +573,44 @@ export class World {
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.scene.add(g);
   }
+  // ------------------------------------------------------------------ animation helpers
+  tween(dur, step, done) { (this.tw ||= []).push({ t: 0, dur, step, done }); }
+  runTweens(dt) {
+    if (!this.tw) return;
+    for (const a of this.tw) { a.t += dt; const k = Math.min(1, a.t / a.dur); try { a.step && a.step(k, dt); } catch (e) { } if (k >= 1) { a.dead = true; try { a.done && a.done(); } catch (e) { } } }
+    this.tw = this.tw.filter(a => !a.dead);
+  }
+  // an expanding ring on the floor (shockwaves, ice waves, splashes)
+  ring(x, z, color, r1, dur = 0.8, width = 0.18, y = 0.06) {
+    const m = new THREE.Mesh(new THREE.RingGeometry(1 - width, 1, 64), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); this.scene.add(m);
+    this.tween(dur, k => { const e = 1 - Math.pow(1 - k, 3); m.scale.setScalar(0.2 + e * r1); m.material.opacity = 0.9 * (1 - k); }, () => { this.scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+  }
+  // a glowing dome (shields)
+  dome(x, z, color, dur = 1.2, shatter = false) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 16, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, wireframe: shatter }));
+    m.position.set(x, 0, z); this.scene.add(m);
+    this.tween(dur, k => { const s = shatter ? 1.1 + k * 1.4 : Math.min(1, k * 4) * 1.15; m.scale.set(s, s * 1.4, s); m.material.opacity = (shatter ? 0.8 : 0.5) * (1 - k * k); m.rotation.y += 0.05; }, () => { this.scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+  }
+  // little stars shooting up (task done, power used)
+  sparkle(x, z, color = 0xffe680, n = 16, y = 0.6) {
+    if (!this.sparkTex) this.sparkTex = new THREE.CanvasTexture(canvas(32, 32, g => { g.fillStyle = '#fff'; g.beginPath(); for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2, r = k % 2 ? 4 : 15; g.lineTo(16 + Math.cos(a) * r, 16 + Math.sin(a) * r); } g.fill(); }));
+    for (let i = 0; i < n; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.sparkTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      const a = Math.random() * 6.28, v = 1 + Math.random() * 2.2, up = 2 + Math.random() * 2.5;
+      sp.position.set(x, y, z); sp.scale.setScalar(0.25); this.scene.add(sp);
+      this.tween(0.8 + Math.random() * 0.4, k => { sp.position.set(x + Math.cos(a) * v * k, y + up * k - 2 * k * k, z + Math.sin(a) * v * k); sp.material.opacity = 1 - k; sp.material.rotation += 0.2; sp.scale.setScalar(0.3 * (1 - k * 0.5)); }, () => { this.scene.remove(sp); sp.material.dispose(); });
+    }
+  }
+  // something flies in an arc from a to b
+  fly(mesh, ax, az, bx, bz, dur = 0.6, h = 1.5, done) {
+    this.scene.add(mesh);
+    this.tween(dur, k => mesh.position.set(ax + (bx - ax) * k, 0.8 + Math.sin(k * Math.PI) * h + (1.8 - 0.8) * k, az + (bz - az) * k), () => { this.scene.remove(mesh); done && done(); });
+  }
+  // a stream of white foam (Fire Extinguisher)
+  foam(ax, az, bx, bz, dur = 0.8) {
+    this.tween(dur, () => { for (let n = 0; n < 3; n++) { const d = this.drips.find(d => !d.on); if (!d) return; const T = 0.3; d.on = true; d.m.visible = true; d.m.position.set(ax, 0.9, az); d.v.set((bx - ax) / T + (Math.random() - 0.5), (0.2 - 0.9 + 6 * T * T) / T, (bz - az) / T + (Math.random() - 0.5)); d.m.scale.setScalar(2); } });
+  }
   // ------------------------------------------------------------------ role effects
   initFx() {
     const S = this.scene;
@@ -754,7 +792,8 @@ export class World {
     const t = this.t; this.lastFocus = focus;
     // lights: nearest room lamps follow the player
     const lamps = this.lamps.slice().sort((a, b) => (a.x - focus.x) ** 2 + (a.z - focus.z) ** 2 - ((b.x - focus.x) ** 2 + (b.z - focus.z) ** 2));
-    const dim = opts.lightsOut ? 0.12 : 1;
+    let dim = opts.lightsOut ? 0.12 : 1;
+    if (this.flickerT > 0) { this.flickerT -= dt; dim *= Math.random() < 0.45 ? 0.15 : 1; }      // lights stutter before a blackout
     this.pool.forEach((l, i) => { l.position.copy(lamps[i] || new THREE.Vector3(0, -50, 0)); l.intensity = 14 * dim * (1 + Math.sin(t * 37 + i) * 0.01); });
     this.outK = (this.outK ?? 0) + ((opts.outdoor ? 1 : 0) - (this.outK ?? 0)) * Math.min(1, dt * 2);
     this.amb.intensity = 0.42 * (1 + this.outK * 0.45) * (opts.lightsOut ? 0.25 : 1);
@@ -768,7 +807,7 @@ export class World {
     if (this.buttonMesh) this.buttonMesh.material.emissiveIntensity = 0.6 + Math.sin(t * 3) * 0.3;
     if (this.lavaTex) { this.lavaTex.offset.x = t * 0.004; this.lavaTex.offset.y = Math.sin(t * 0.1) * 0.02; }
     if (this.cloudTex) this.cloudTex.offset.x = t * 0.003;
-    this.updateFx(dt);
+    this.updateFx(dt); this.runTweens(dt);
     if (this.moteMesh && this.moteMesh.parent) { const P = this.moteMesh.geometry.attributes.position; for (let i = 0; i < P.count; i++) { const ph = this.motes[i] += dt * 0.3; P.setX(i, P.getX(i) + Math.sin(ph) * dt * 0.05); P.setY(i, P.getY(i) + Math.cos(ph * 0.7) * dt * 0.03); } P.needsUpdate = true; this.moteMesh.material.opacity = opts.lightsOut ? 0.1 : 0.55; }
     for (const [, g] of this.stations) { if (g.userData.led) g.userData.led.material.color.setHex(Math.sin(t * 5 + g.position.x) > 0 ? 0x30ff60 : 0x103018); }
     for (const v of this.valveMeshes) v.userData.wheel.rotation.z = opts.heat ? t * 2 : 0;

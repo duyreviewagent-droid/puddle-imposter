@@ -64,6 +64,7 @@ const eyeGeo = new THREE.SphereGeometry(0.125, 24, 16);
 const pupilGeo = new THREE.SphereGeometry(0.062, 16, 12);
 const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.18, metalness: 0 });
 const pupilMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.08, metalness: 0.1 });
+
 const dropGeo = new THREE.SphereGeometry(0.045, 10, 8);
 
 export class Puddle {
@@ -98,6 +99,7 @@ export class Puddle {
       const e = new THREE.Mesh(eyeGeo, eyeMat); e.scale.set(1, 1, 0.75); e.castShadow = true;
       const p = new THREE.Mesh(pupilGeo, pupilMat);
       e.add(p);
+
       this.lean.add(e);
       this.eyes.push({ e, p, side, ox: 0, oy: 0, vx: 0, vy: 0, rnd: Math.random() * 10 });
     }
@@ -106,6 +108,8 @@ export class Puddle {
     this.vel = new THREE.Vector2(); this.leanV = new THREE.Vector2(); this.leanX = 0; this.leanZ = 0; this.leanVX = 0; this.leanVZ = 0;
     this.squash = 1; this.squashV = 0; this.melt = 0; this.dead = 0; this.ghost = false; this.lookDown = 0;
     this.dripT = Math.random(); this.trailDist = 0;
+    this.animScale = new THREE.Vector3(1, 1, 1); this.spinY = 0; this.hopY = 0; this.fear = 0;
+    this.blinkT = 1 + Math.random() * 4; this.blink = 0; this.lookT = 2 + Math.random() * 3; this.look = 0;
     this.heading = 0;
     this.shape(0);
   }
@@ -138,7 +142,7 @@ export class Puddle {
         const cap = new THREE.Mesh(new THREE.SphereGeometry(0.47, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), iceMat); cap.scale.set(1, 2.3, 1); cap.position.y = 0; this.ice.add(cap);
         this.group.add(this.ice);
       }
-      this.ice.visible = true;
+      this.ice.visible = true; this.iceK = 0; this.ice.scale.setScalar(0.01);
     } else if (this.saved) {
       m.color.setHex(this.saved.color); m.roughness = this.saved.rough; m.transmission = this.saved.tr; m.attenuationDistance = this.saved.att; m.iridescence = 0;
       if (this.ice) this.ice.visible = false;
@@ -180,11 +184,16 @@ export class Puddle {
   }
   // dt seconds; vx,vz world velocity; face = heading radians (0 = +z)
   update(dt, t, vx, vz, face) {
-    if (this.frozen) { vx = vz = 0; t = this.frozeT ??= t; } else this.frozeT = null;      // solid ice: no slosh, no jiggle
+    if (this.frozen) { vx = vz = 0; t = this.frozeT ??= t; if (this.ice && this.iceK < 1) { this.iceK = Math.min(1, this.iceK + dt * 3.5); const e = 1 - Math.pow(1 - this.iceK, 3); this.ice.scale.set(e, e * (1 + Math.sin(this.iceK * 9) * 0.05 * (1 - this.iceK)), e); } } else this.frozeT = null;      // solid ice: no slosh, no jiggle
     this.vel.set(vx, vz);
     let d = face - this.heading; d = Math.atan2(Math.sin(d), Math.cos(d));
     this.heading += d * Math.min(1, dt * 10);
-    this.lean.rotation.y = this.heading;
+    this.lean.rotation.y = this.heading + this.spinY;
+    this.lean.scale.copy(this.animScale); this.lean.position.y = this.hopY;
+    // blink every few seconds, glance around when standing still
+    this.blinkT -= dt; if (this.blinkT < 0) { this.blink = 0.14; this.blinkT = 2 + Math.random() * 5; }
+    if (this.blink > 0) this.blink -= dt;
+    this.lookT -= dt; if (this.lookT < 0) { this.lookT = 1.5 + Math.random() * 3; this.look = Math.hypot(vx, vz) < 0.3 ? (Math.random() - 0.5) * 0.08 : 0; }
     // lean into motion with a springy slosh (local space)
     const c = Math.cos(-this.heading), s = Math.sin(-this.heading);
     const lx = vx * c - vz * s, lz = vx * s + vz * c;
@@ -216,7 +225,10 @@ export class Puddle {
       E.ox += E.vx * dt; E.oy += E.vy * dt;
       const m = Math.hypot(E.ox, E.oy), lim = 0.055;
       if (m > lim) { E.ox *= lim / m; E.oy *= lim / m; E.vx *= -0.4; E.vy *= -0.4; }
-      E.p.position.set(E.ox, E.oy, 0.105);
+      E.p.position.set(E.ox + this.look, E.oy, 0.105);
+      E.p.scale.setScalar(1 - this.fear * 0.45);                                   // pupils shrink when scared
+      const shut = !this.dead && this.blink > 0 ? 1 - Math.abs(this.blink - 0.07) / 0.07 : 0;
+      E.e.scale.set(1 + this.fear * 0.15, (1 - shut * 0.88) * (1 + this.fear * 0.15), 0.75);
     }
     // drips + wet trail
     if (this.world && !this.ghost && !this.dead) {
