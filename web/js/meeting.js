@@ -91,9 +91,9 @@ function statement(g, p) {
     const fl = g.lastFlood && g.time - g.lastFlood < 90;
     if (fl && R() < 0.15) return { pid: p.id, text: pick(R, ['thank you whoever flooded the map 🌊', 'the underwater one saved us', 'flooding was so clutch']) };
     const sn = recent.find(c => c.kind === 'snitch' && g.players[c.who].alive);
-    if (sn) { accuse(g, p.id, sn.who, 60); return { pid: p.id, text: `I'm the Snitch — I finished my tasks and ${nm(g, sn.who).toUpperCase()} is FIRE` }; }
+    if (sn) { accuse(g, p.id, sn.who, 60); return { pid: p.id, text: `I'm the Reflection — I finished my tasks and ${nm(g, sn.who).toUpperCase()} shows up as FIRE` }; }
     const ins = recent.find(c => c.kind === 'inspect' && g.players[c.who].alive);
-    if (ins) { accuse(g, p.id, ins.who, 65); return { pid: p.id, text: `Detective here: I inspected ${nm(g, ins.who)} and they HAVE killed` }; }
+    if (ins) { accuse(g, p.id, ins.who, 65); return { pid: p.id, text: `Thermometer here: ${nm(g, ins.who)} is running HOT, they have killed` }; }
     const fr = recent.find(c => c.kind === 'frozen');
     if (fr && R() < 0.35) return { pid: p.id, text: pick(R, ['someone FROZE everyone, there is an Ice among us', 'I got frozen solid and couldn\'t move', 'ice froze me again 🧊 vote carefully']) };
     const bm = recent.find(c => c.kind === 'burnedMe' && g.players[c.who].alive);

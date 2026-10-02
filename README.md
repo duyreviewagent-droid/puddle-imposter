@@ -14,7 +14,7 @@ A 3D social-deduction game about melting water puddles with googly eyes. Most pl
 
 ## Modes
 - **Classic**: Fire/Water plus the specials above.
-- **🎲 Random Roles** (solo + online): everyone is dealt a random role from 34: the classic specials plus 23 Random-Roles-only roles (Medic, Detective, Mayor, Sheriff, Lookout, Speedy, Snitch, Mechanic, Bodyguard, Psychic, Radar, Medium, Lucky Clover, Alarm, Hydrant, Shadow, Morph, Smoke, Lava, Trapper, Silencer, Phantom, Hacker).
+- **🎲 Random Roles** (solo + online): everyone is dealt a random role from 34: the classic specials plus 23 Random-Roles-only roles (Water: Umbrella, Thermometer, Fountain, Water Gun, Lighthouse, Waterslide, Reflection, Plumber, Dam, Ripple, Sonar, Mist, Rubber Duck, Sprinkler, Fire Hydrant; Fire: Heat Haze, Mirage, Smoke, Lava, Hot Coals, Ash Cloud, Will-o'-Wisp, Wildfire).
 
 ## Run
 - Local server: `cd web && npm install && node server.js`, then open http://localhost:8000
