@@ -115,7 +115,7 @@ $('b-resume').onclick = () => { $('scr-pause').classList.add('hidden'); S = 'pla
 addEventListener('pointerdown', () => { initAudio(); if (S === 'title') setMood('title'); }, { once: true });
 
 // ------------------------------------------------------------------ game state
-let spirit = null, spiritModel = null, pets = [], S = 'title', game = null, world = null, models = [], bodyModels = new Map(), taskPanel = null, stateT = 0, killedFx = null;
+let bubblePing = null, spirit = null, spiritModel = null, pets = [], S = 'title', game = null, world = null, models = [], bodyModels = new Map(), taskPanel = null, stateT = 0, killedFx = null;
 let camPos = new THREE.Vector3(), visR = 7.5, stepAcc = 0, heatBeep = 0, lastRoom = '', roomT = 0, endT = -1, dripCd = 0;
 let me = 0, NET = null;          // NET is set while playing online
 const H = () => game.players[me];
@@ -279,6 +279,9 @@ function drawMap(c, big) {
   if (game.sab && blink) { const pts = game.sab.type === 'lights' ? [m.lights] : m.valves; for (const s of pts) { const [x, y] = P(s.x, s.z); g.fillStyle = '#ff2a2a'; g.beginPath(); g.arc(x, y, big ? 12 : 16, 0, 7); g.fill(); } }
   if (h.imp && big) for (const v of m.vents) { const [x, y] = P(v.x, v.z); g.fillStyle = '#8a95a0'; g.fillRect(x - 6, y - 4, 12, 8); }
   if (h.role === 'ext' && h.alive && h.uses > 0) for (const b of game.bodies) { if (b.reported || Math.hypot(b.x - h.x, b.z - h.z) > 16) continue; const [bx, by] = P(b.x, b.z); g.font = `${big ? 26 : 34}px sans-serif`; g.textAlign = 'center'; g.fillStyle = '#000'; g.fillText('💨', bx, by + 10); }
+  if (h.role === 'bubble') for (const id of h.tracks || []) { const q = game.players[id]; if (!q.alive) continue; const [bx, by] = P(q.x, q.z); g.fillStyle = q.color; g.beginPath(); g.arc(bx, by, big ? 9 : 13, 0, 7); g.fill(); g.strokeStyle = '#bfe8ff'; g.lineWidth = 3; g.beginPath(); g.arc(bx, by, (big ? 14 : 19) + Math.sin(performance.now() / 200) * 2, 0, 7); g.stroke(); }
+  if (bubblePing && bubblePing.t > 0) { const [bx, by] = P(bubblePing.x, bubblePing.z); g.strokeStyle = '#ff3a2a'; g.lineWidth = 4; g.beginPath(); g.arc(bx, by, 10 + (3 - bubblePing.t) * 20 % 30, 0, 7); g.stroke(); }
+  if (h.sky) for (const q of game.players) { if (!q.alive || q.id === me) continue; const [bx, by] = P(q.x, q.z); g.fillStyle = q.color; g.beginPath(); g.arc(bx, by, big ? 7 : 10, 0, 7); g.fill(); }
   if (h.role === 'bucket') for (const d of game.map.dumps) { const [bx, by] = P(d.x, d.z); g.font = `${big ? 22 : 30}px sans-serif`; g.textAlign = 'center'; g.fillStyle = '#000'; g.fillText('🪣', bx, by + 8); }
   const [x, y] = P(h.x, h.z);
   g.fillStyle = h.color; g.shadowColor = h.color; g.shadowBlur = 14; g.beginPath(); g.arc(x, y, big ? 10 : 16, 0, 7); g.fill(); g.shadowBlur = 0;
@@ -286,7 +289,7 @@ function drawMap(c, big) {
 }
 
 // ------------------------------------------------------------------ events from the game
-function humanSees(x, z) { const h = H(); if (!h.alive || h.spirit) return true; return Math.hypot(x - h.x, z - h.z) <= visR + 0.3 && game.los(h.x, h.z, x, z); }
+function humanSees(x, z) { const h = H(); if (!h.alive || h.spirit || h.sky) return true; return Math.hypot(x - h.x, z - h.z) <= visR + 0.3 && game.los(h.x, h.z, x, z); }
 function handleEvents() {
   const h = H();
   for (const e of game.events) {
@@ -295,6 +298,7 @@ function handleEvents() {
       const near = e.victim === me || e.killer === me || humanSees(e.x, e.z);
       if (!near) { const d = Math.hypot(e.x - h.x, e.z - h.z); if (d < 18) sfx.splash(1, 0.25 * (1 - d / 18), (e.x - h.x) / 18); }
       const style = e.style || 'fire';
+      world.rainbowAt(e.victim, 0, 0, false);
       if (style === 'fire') {
         world.fire(e.x, e.z, 2.6, 1.1); world.steamFx(e.x, e.z, 9); world.burst(e.x, 0.7, e.z, 26, 2.4);
         if (near) { sfx.burn(); }
@@ -304,7 +308,7 @@ function handleEvents() {
       } else if (style === 'sponge') { world.suck(e.x, e.z, e.kx, e.kz); if (near) sfx.slurp(); }
       else { world.burst(e.x, 0.5, e.z, 20, 1.6); world.wetSpot(e.x, e.z, 1.2, 20); if (near) sfx.scoop(); }
       models[v.id].setGhost(true); if (models[v.id].label) models[v.id].label.material.opacity = 0.5;
-      if (e.victim === me) { killedFx = { t: 0, killer: k.id }; $('flash').style.transition = 'none'; $('flash').style.opacity = 0.75; requestAnimationFrame(() => { $('flash').style.transition = 'opacity 1.6s'; $('flash').style.opacity = 0; }); if (taskPanel) taskPanel.close(); flashBanner(`${{ sponge: '🧽 YOU WERE SOAKED UP', bucket: '🪣 YOU WERE SCOOPED INTO A BUCKET' }[e.style] || '🔥 YOU WERE SET ON FIRE'}<small>by ${k.name}</small>`, 3.5); }
+      if (e.victim === me) { killedFx = { t: 0, killer: k.id }; $('flash').style.transition = 'none'; $('flash').style.opacity = 0.75; requestAnimationFrame(() => { $('flash').style.transition = 'opacity 1.6s'; $('flash').style.opacity = 0; }); if (taskPanel) taskPanel.close(); flashBanner(`${e.sky ? '🌈🔥 FIRE BURNED YOUR RAINBOW — YOU FELL' : { sponge: '🧽 YOU WERE SOAKED UP', bucket: '🪣 YOU WERE SCOOPED INTO A BUCKET' }[e.style] || '🔥 YOU WERE SET ON FIRE'}<small>by ${k.name}</small>`, 3.5); }
     } else if (e.type === 'report' || e.type === 'emergency') {
       if (taskPanel) taskPanel.close();
       S = 'alert'; stateT = 0; $('m-chat').innerHTML = ''; if (!NET) for (const p of game.players) p.voted = null;
@@ -343,6 +347,10 @@ function handleEvents() {
     else if (e.type === 'thaw') { if (e.p === me) { sfx.thaw(); $('iceov').classList.add('hidden'); } else if (humanSees(game.players[e.p].x, game.players[e.p].z)) sfx.thaw(); if (NET) game.players[e.p].frozen = 0; }
     else if (e.type === 'evap') { world.steamFx(e.x, e.z, 1.5); world.burst(e.x, 0.9, e.z, 10, 0.8); if (e.p === me) { sfx.whoosh(); sfx.revive(); } }
     else if (e.type === 'condense') { if (e.p === me) { spirit = null; h.spirit = null; sfx.drip(1); sfx.splash(0.6, 0.7); flashBanner('💧 BACK IN YOUR BODY', 1.5); } world.burst(e.x, 1.4, e.z, 12, 0.6); }
+    else if (e.type === 'rainbow') { if (e.p === me) { sfx.revive(); flashBanner('🦄 UP THE RAINBOW!<small>you can see the whole map · F to slide back down</small>', 2.5); } else if (humanSees(e.x, e.z)) sfx.revive(); }
+    else if (e.type === 'land') { world.rainbowAt(e.p, 0, 0, false); if (e.p === me) { sfx.whoosh(); h.sky = null; } }
+    else if (e.type === 'bubble') { if (e.p === me) { sfx.drip(1); sfx.blip(1800); flashBanner(`🫧 TRACKER ON ${game.players[e.q].name.toUpperCase()}<small>${e.left} bubble${e.left === 1 ? '' : 's'} left</small>`, 2); if (NET && !(h.tracks || []).includes(e.q)) (h.tracks ||= []).push(e.q); } }
+    else if (e.type === 'bubbleAlert') { if (e.to === me) { sfx.heatAlarm(); flashBanner(`🫧 ${game.players[e.killer].name.toUpperCase()} JUST KILLED!<small>in ${e.room} — your bubble saw it</small>`, 3); bubblePing = { x: e.x, z: e.z, t: 3 }; } }
     else if (e.type === 'task') buildTaskList();
     else if (e.type === 'win') { endT = e.heat ? 2.5 : 2.2; if (e.heat) { $('flash').style.background = '#ff7a10'; $('flash').style.transition = 'opacity 2s'; $('flash').style.opacity = 0.8; } }
   }
@@ -556,6 +564,7 @@ function playUpdate(dt) {
   }
   if (killedFx && killedFx.t < 1.8) { mx = mz = 0; }
   if (h.frozen > 0) { mx = mz = 0; }
+  if (h.sky) { mx = mz = 0; $('banner').innerHTML = `🦄 ON THE RAINBOW — ${Math.max(0, Math.ceil(h.sky.t))}s<small>you can see everyone · F to slide down · if Fire burns the bottom, you fall!</small>`; $('banner').classList.remove('hidden'); bannerT = 0.2; }
   iceOverlay(dt);
   if (h.spirit && spirit) {
     const l2 = Math.hypot(mx, mz);
@@ -614,7 +623,7 @@ function playUpdate(dt) {
     }
   } else { $('heatfx').style.opacity = 0; if (bannerT <= 0) $('banner').classList.add('hidden'); }
   drawMap($('minimap'), false);
-  roleCard(); abilityHud(h);
+  roleCard(); abilityHud(h); if (bubblePing) bubblePing.t -= dt;
 }
 
 function drawWorld(dt, aspect) {
@@ -623,7 +632,7 @@ function drawWorld(dt, aspect) {
   visR += (target - visR) * Math.min(1, dt * 1.6);
   const heat = game.sab && game.sab.type === 'heat';
   const hr = game.map.rooms.find(r => r.name === h.room);
-  world.update(dt, spirit && h.spirit ? spirit : h, { lightsOut: game.sab && game.sab.type === 'lights', heat, outdoor: !!(hr && hr.out) });
+  world.update(dt, spirit && h.spirit ? spirit : h.sky ? { x: game.map.W / 2, z: game.map.H / 2 } : h, { lightsOut: game.sab && game.sab.type === 'lights', heat, outdoor: !!(hr && hr.out) || !!h.sky });
   // characters
   game.players.forEach((p, i) => {
     const pd = models[i];
@@ -635,6 +644,10 @@ function drawWorld(dt, aspect) {
     pd.setFrozen(p.alive && p.frozen > 0);
     pd.group.position.set(p.x, p.alive ? 0 : 0.35 + Math.sin(t * 2 + i) * 0.12, p.z);
     if (vis) pd.update(dt, t, p.vx, p.vz, p.face);
+    const rb = world.rainbowAt(p.id, p.x, p.z, !!(p.sky && p.alive));
+    if (rb) { pd.group.visible = true; pd.group.position.copy(rb.userData.top); if (!pd.horn) { pd.horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.42, 12), new THREE.MeshStandardMaterial({ color: 0xffe08a, metalness: 0.7, roughness: 0.25, emissive: 0xffc040, emissiveIntensity: 0.4 })); pd.horn.position.set(0, 1.18, 0.12); pd.horn.rotation.x = 0.35; pd.lean.add(pd.horn); } }
+    if (pd.horn) pd.horn.visible = !!(p.sky && p.alive) || (p.role === 'unicorn' && p.id === me && p.alive);
+    if (h.role === 'bubble' && (h.tracks || []).includes(p.id)) { if (!pd.track) { pd.track = new THREE.Mesh(new THREE.SphereGeometry(0.16, 18, 12), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, thickness: 0.05, roughness: 0, iridescence: 1, iridescenceIOR: 1.6, transparent: true, opacity: 0.9 })); pd.group.add(pd.track); } pd.track.visible = p.alive; pd.track.position.set(Math.sin(t * 2) * 0.3, 2.05 + Math.sin(t * 3) * 0.08, 0); }
     if (p.carry >= 0 && p.alive && !pd.bucket) { pd.bucket = carryBucket(); pd.bucket.position.set(0.58, 0.42, 0.12); pd.lean.add(pd.bucket); }
     if (pd.bucket) { pd.bucket.visible = p.carry >= 0 && p.alive; pd.bucket.rotation.z = Math.sin(t * 9) * 0.12; }
     if (pets[i]) updatePet(pets[i], p, dt, t, vis && p.alive);
@@ -658,19 +671,22 @@ function drawWorld(dt, aspect) {
   if (S === 'intro') off.set(0, 9 + stateT * 1.4, 6 + stateT * 0.85);
   if (killedFx && killedFx.t < 2.4) { const k2 = Math.sin(Math.min(1, killedFx.t / 2.4) * Math.PI); off.lerp(new THREE.Vector3(0, 5, 4), k2); }
   const focus = spirit && h.spirit ? spirit : h;
-  const want = new THREE.Vector3(focus.x, 0, focus.z).add(off);
+  if (h.sky) { const M = game.map, span = Math.max(M.W, M.H / aspect * 1.6); off.set(0, span * 1.25, span * 0.45); focus.__c = { x: M.W / 2, z: M.H / 2 }; }
+  const fc = h.sky ? { x: game.map.W / 2, z: game.map.H / 2 } : focus;
+  const want = new THREE.Vector3(fc.x, 0, fc.z).add(off);
   camPos.lerp(want, Math.min(1, dt * 6));
   C.position.copy(camPos);
   if (heat) { C.position.x += (Math.random() - 0.5) * 0.04; C.position.y += (Math.random() - 0.5) * 0.04; }
   C.lookAt(camPos.x - off.x, 0.4, camPos.z - off.z);
-  C.updateProjectionMatrix();
+  C.far = h.sky ? 600 : 400; C.updateProjectionMatrix();
+  const F = world.scene.fog; if (F) { F.userData ||= { near: F.near, far: F.far }; F.near = h.sky ? 500 : F.userData.near; F.far = h.sky ? 900 : F.userData.far; }
   drawDark();
 }
 
 function drawDark() {
   const W = dark.width, Hh = dark.height, h = H();
   dctx.setTransform(1, 0, 0, 1, 0, 0); dctx.clearRect(0, 0, W, Hh);
-  if (!h.alive || h.spirit || (S !== 'play' && S !== 'intro' && S !== 'alert')) return;
+  if (!h.alive || h.spirit || h.sky || (S !== 'play' && S !== 'intro' && S !== 'alert')) return;
   const C = world.camera, r = visR;
   const P = (x, z) => { proj.set(x, 0.9, z).project(C); return [(proj.x + 1) / 2 * W, (1 - proj.y) / 2 * Hh]; };
   const [cx, cy] = P(h.x, h.z), [rx] = P(h.x + r, h.z), [, ry1] = P(h.x, h.z + r), [, ry0] = P(h.x, h.z - r);
@@ -701,7 +717,10 @@ function drawDark() {
 function doAbility() {
   const h = H(); if (S !== 'play' || !h.alive) return;
   const a = game.ability(h);
-  if (!a) { if (['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap'].includes(h.role)) sfx.bad(); return; }
+  if (!a) { if (['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap', 'unicorn', 'bubble'].includes(h.role)) sfx.bad(); return; }
+  if (a.kind === 'rainbow') { if (NET) { h.sky = { t: ROLES.unicorn.dur }; nsend({ t: 'act', a: 'ability', op: 'rainbow' }); } else game.rainbow(h); return; }
+  if (a.kind === 'land') { if (NET) nsend({ t: 'act', a: 'ability', op: 'land' }); else game.land(h); return; }
+  if (a.kind === 'bubble') { if (NET) nsend({ t: 'act', a: 'ability', op: 'bubble' }); else game.bubble(h); return; }
   if (a.kind === 'evaporate') { spirit = { x: h.x, z: h.z, vx: 0, vz: 0, face: h.face }; if (NET) { h.spirit = { t: ROLES.evap.dur }; nsend({ t: 'act', a: 'ability', op: 'evaporate' }); } else game.evaporate(h); return; }
   if (a.kind === 'return') { if (NET) { nsend({ t: 'act', a: 'ability', op: 'return' }); } else game.condense(h); return; }
   if (a.kind === 'freeze') { if (NET) nsend({ t: 'act', a: 'ability', op: 'freeze' }); else game.freeze(h); return; }
@@ -722,15 +741,15 @@ function openFlush(from) {
 }
 $('flush-x').onclick = () => $('flushpick').classList.add('hidden');
 function abilityHud(h) {
-  const has = ['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap'].includes(h.role) && h.alive;
+  const has = ['toilet', 'rain', 'ext', 'bucket', 'ice', 'evap', 'unicorn', 'bubble'].includes(h.role) && h.alive;
   $('a-abil').classList.toggle('hidden', !has);
   if (!has) return;
-  const I = { toilet: ['🚽', 'FLUSH'], rain: ['🌧️', 'RAIN'], ext: ['🧯', 'REVIVE'], bucket: ['🪣', 'DUMP'], ice: ['🧊', 'FREEZE'], evap: h.spirit ? ['💧', 'RETURN'] : ['☁️', 'VAPOR'] }[h.role];
+  const I = { toilet: ['🚽', 'FLUSH'], rain: ['🌧️', 'RAIN'], ext: ['🧯', 'REVIVE'], bucket: ['🪣', 'DUMP'], ice: ['🧊', 'FREEZE'], evap: h.spirit ? ['💧', 'RETURN'] : ['☁️', 'VAPOR'], unicorn: h.sky ? ['⬇️', 'SLIDE DOWN'] : ['🦄', 'RAINBOW'], bubble: ['🫧', 'BUBBLE'] }[h.role];
   $('abil-ic').textContent = I[0]; $('abil-lab').textContent = I[1];
   $('a-abil').classList.toggle('on', !!game.ability(h));
   const cdMax = ROLES[h.role].cd || 1;
-  const timed = h.role === 'toilet' || h.role === 'rain' || h.role === 'ice' || (h.role === 'evap' && !h.spirit);
-  $('abil-cd').textContent = h.role === 'ice' && h.uses <= 0 ? '0' : timed && h.abilCd > 0 ? Math.ceil(h.abilCd) : h.role === 'ext' ? (h.uses > 0 ? '' : '0') : '';
+  const timed = h.role === 'toilet' || h.role === 'rain' || h.role === 'ice' || (h.role === 'evap' && !h.spirit) || (h.role === 'unicorn' && !h.sky);
+  $('abil-cd').textContent = h.role === 'bubble' ? String(3 - (h.tracks || []).length) : h.role === 'ice' && h.uses <= 0 ? '0' : timed && h.abilCd > 0 ? Math.ceil(h.abilCd) : h.role === 'ext' ? (h.uses > 0 ? '' : '0') : '';
   $('a-abil').style.setProperty('--cd', timed ? Math.max(0, h.abilCd / cdMax) : 0);
   const K = { sponge: ['🧽', 'SOAK'], bucket: ['🪣', 'SCOOP'] }[h.role] || ['🔥', 'BURN'];
   $('kill-ic').textContent = K[0]; $('kill-lab').textContent = K[1];
@@ -784,6 +803,8 @@ function roleCard() {
     if (h.role === 'toilet') return `<div class="ab"><span>🚽 Flush from any vent [F]</span>${ready(h.abilCd)}</div>`;
     if (h.role === 'rain') return `<div class="ab"><span>🌧️ Rain away emergencies [F]</span>${game.sab ? ready(h.abilCd) : '<b class="cd">no emergency</b>'}</div>`;
     if (h.role === 'ext') return `<div class="ab"><span>🧯 Revive a burned body [F]</span><b class="${h.uses > 0 ? 'rd' : 'cd'}">${h.uses} left</b></div>`;
+    if (h.role === 'unicorn') return `<div class="ab"><span>🦄 Ride the rainbow / slide down [F]</span>${h.sky ? `<b class="cd">${Math.ceil(h.sky.t)}s in the sky</b>` : ready(h.abilCd)}</div>`;
+    if (h.role === 'bubble') return `<div class="ab"><span>🫧 Bubble someone nearby [F]</span><b class="rd">${3 - (h.tracks || []).length} left</b></div><div class="ab"><span>Tracking</span><b class="rd">${(h.tracks || []).map(i => game.players[i].name).join(', ') || 'nobody yet'}</b></div>`;
     if (h.role === 'evap') return `<div class="ab"><span>☁️ Evaporate / return [F]</span>${h.spirit ? `<b class="cd">${Math.ceil(h.spirit.t)}s left</b>` : ready(h.abilCd)}</div>`;
     if (h.role === 'ice') return `<div class="ab"><span>🧊 Freeze all Water [F]</span>${h.uses > 0 ? ready(h.abilCd) : '<b class="cd">used up</b>'}</div><div class="ab"><span>Freezes left</span><b class="rd">${h.uses} / 3</b></div>`;
     if (h.role === 'bucket') return `<div class="ab"><span>🪣 Dump at a big bucket [F]</span><b class="${h.carry >= 0 ? 'cd' : 'rd'}">${h.carry >= 0 ? 'FULL' : 'empty'}</b></div>`;
@@ -1083,7 +1104,8 @@ function startOnline(m) {
 function applySnap(m) {
   m.p.forEach((a, i) => {
     const p = game.players[i]; if (!p) return;
-    const [x, z, f, vx, vz, alive, inVent, tp, ej, hold, carry, frozen, breaks] = a;
+    const [x, z, f, vx, vz, alive, inVent, tp, ej, hold, carry, frozen, breaks, sky] = a;
+    if (i !== me) p.sky = sky ? { t: 1 } : null;
     p.alive = !!alive; p.inVent = inVent; p.ejected = !!ej; p.carry = carry ? 1 : -1;
     if (frozen && !p.frozen) { p.frozen = 1; p.iceT = 0; p.breaks = 0; } if (!frozen) p.frozen = 0; if (frozen && i === me) p.breaks = Math.max(p.breaks || 0, breaks || 0);
     if (i === me) { if (tp !== myTp) { myTp = tp; p.x = x; p.z = z; camPos.x += 0; } return; }
@@ -1096,7 +1118,8 @@ function applySnap(m) {
   if (!!wasSab !== !!game.sab) buildTaskList();
   game.sabCd = m.sabCd; game.buttonCd = m.bcd;
   const tt = game._tt; if (tt.done !== m.done || tt.total !== m.total) { tt.done = m.done; tt.total = m.total; buildTaskList(); }
-  const h = H(); h.killCd = m.kc; h.meetings = m.ml; h.abilCd = m.ac ?? 0; h.uses = m.us ?? 0; if (m.sp > 0) h.spirit = { t: m.sp }; else if (h.spirit && m.sp === 0 && h.spirit.t < ROLES.evap.dur - 1) h.spirit = null;
+  const h = H(); h.killCd = m.kc; h.meetings = m.ml; h.abilCd = m.ac ?? 0; h.uses = m.us ?? 0; if (m.sk > 0) h.sky = { t: m.sk }; else if (h.sky && h.sky.t < ROLES.unicorn.dur - 1) h.sky = null; if (m.tr) h.tracks = m.tr;
+  if (m.sp > 0) h.spirit = { t: m.sp }; else if (h.spirit && m.sp === 0 && h.spirit.t < ROLES.evap.dur - 1) h.spirit = null;
 }
 function netEvent(e) {
   if (e.type === 'kill') { const v = game.players[e.victim]; v.alive = false; v.deadT = game.time; }
@@ -1117,8 +1140,9 @@ function netPlay(dt) {
   const h = H(); h.room = roomName(game.map, h.x, h.z);
   if (h.frozen > 0) h.iceT = (h.iceT || 0) + dt;
   if (h.spirit) h.spirit.t -= dt;
+  if (h.sky) h.sky.t -= dt;
   posT -= dt;
-  if (posT <= 0 && !h.spirit) { posT = 0.05; nsend({ t: 'pos', x: +h.x.toFixed(2), z: +h.z.toFixed(2), vx: +h.vx.toFixed(2), vz: +h.vz.toFixed(2), f: +h.face.toFixed(2), tp: myTp }); }
+  if (posT <= 0 && !h.spirit && !h.sky) { posT = 0.05; nsend({ t: 'pos', x: +h.x.toFixed(2), z: +h.z.toFixed(2), vx: +h.vx.toFixed(2), vz: +h.vz.toFixed(2), f: +h.face.toFixed(2), tp: myTp }); }
 }
 if (Q.has('join')) { wantJoin = Q.get('join').toUpperCase().slice(0, 4); setTimeout(() => { showOnline(); }, 50); }
 

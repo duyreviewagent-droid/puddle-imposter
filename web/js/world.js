@@ -338,18 +338,18 @@ export class World {
     const inst = (geo, mat, list, f) => { const m = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((sp, i) => { f(dummy, sp, i, col); dummy.updateMatrix(); m.setMatrixAt(i, dummy.matrix); if (m.instanceColor || col.r >= 0) m.setColorAt(i, col); }); m.castShadow = true; m.receiveShadow = true; this.scene.add(m); return m; };
     const trees = spots.filter(() => Math.random() < 0.6), shrubs = spots.filter(s => !trees.includes(s));
     if (T.nature === 'rocks') {
-      inst(new THREE.DodecahedronGeometry(1, 1), std(0xffffff, 0.95), spots, (d, [x, z], i, c) => { const s = 0.6 + Math.random() * 1.8; d.position.set(x, -0.4 + s * 0.3, z); d.scale.set(s, s * (0.5 + Math.random() * 0.5), s * (0.7 + Math.random() * 0.6)); d.rotation.set(Math.random(), Math.random() * 6, Math.random()); const v = 0.12 + Math.random() * 0.1; c.setRGB(v * 1.2, v, v * 0.9); });
+      inst(new THREE.DodecahedronGeometry(1, 1), std(0xffffff, 0.95, 0, { envMapIntensity: 0.25 }), spots, (d, [x, z], i, c) => { const s = 0.6 + Math.random() * 1.8; d.position.set(x, -0.4 + s * 0.3, z); d.scale.set(s, s * (0.5 + Math.random() * 0.5), s * (0.7 + Math.random() * 0.6)); d.rotation.set(Math.random(), Math.random() * 6, Math.random()); const v = 0.12 + Math.random() * 0.1; c.setRGB(v * 1.2, v, v * 0.9, THREE.SRGBColorSpace); });
       return;
     }
-    const trunkMat = std(0xffffff, 0.9);
+    const trunkMat = std(0xffffff, 0.9, 0, { envMapIntensity: 0.25 });
     inst(new THREE.CylinderGeometry(0.16, 0.24, 1, 8), trunkMat, trees, (d, [x, z], i, c) => { const h = 1.6 + Math.random() * 1.6; d.position.set(x, h / 2, z); d.scale.set(1, h, 1); d.rotation.set(0, 0, 0); c.set(T.nature === 'blossom' ? 0x4a3020 : 0x5a3a20); trees[i].h = h; });
     if (T.nature === 'pines') {
-      for (let k = 0; k < 3; k++) inst(new THREE.ConeGeometry(1, 1.4, 9), std(0xffffff, 0.8), trees, (d, sp, i, c) => { const s = (1.4 - k * 0.35) * (0.8 + (i % 5) * 0.08); d.position.set(sp[0], sp.h * 0.55 + k * 0.85, sp[1]); d.scale.set(s, 1, s); d.rotation.set(0, i, 0); c.setRGB(0.12 + k * 0.25, 0.32 + k * 0.2, 0.22 + k * 0.25); });
+      for (let k = 0; k < 3; k++) inst(new THREE.ConeGeometry(1, 1.4, 9), std(0xffffff, 0.8, 0, { envMapIntensity: 0.25 }), trees, (d, sp, i, c) => { const s = (1.4 - k * 0.35) * (0.8 + (i % 5) * 0.08); d.position.set(sp[0], sp.h * 0.55 + k * 0.85, sp[1]); d.scale.set(s, 1, s); d.rotation.set(0, i, 0); c.setRGB(0.12 + k * 0.25, 0.32 + k * 0.2, 0.22 + k * 0.25, THREE.SRGBColorSpace); });
     } else {
       const leaf = lumpyIco();
-      inst(leaf, std(0xffffff, 0.85), trees, (d, sp, i, c) => { const s = 1.1 + Math.random() * 0.9; d.position.set(sp[0], sp.h + s * 0.6, sp[1]); d.scale.set(s, s * 0.85, s); d.rotation.set(Math.random(), Math.random() * 6, 0); if (T.nature === 'blossom' && i % 2) c.setHSL(0.93, 0.6, 0.75 + Math.random() * 0.1); else c.setHSL(0.27 + Math.random() * 0.06, 0.5, 0.25 + Math.random() * 0.12); });
+      inst(leaf, std(0xffffff, 0.85, 0, { envMapIntensity: 0.25 }), trees, (d, sp, i, c) => { const s = 1.1 + Math.random() * 0.9; d.position.set(sp[0], sp.h + s * 0.6, sp[1]); d.scale.set(s, s * 0.85, s); d.rotation.set(Math.random(), Math.random() * 6, 0); if (T.nature === 'blossom' && i % 2) c.setHSL(0.93, 0.6, 0.75 + Math.random() * 0.1, THREE.SRGBColorSpace); else c.setHSL(0.27 + Math.random() * 0.06, 0.5, 0.25 + Math.random() * 0.12, THREE.SRGBColorSpace); });
     }
-    inst(lumpyIco(), std(0xffffff, 0.85), shrubs, (d, [x, z], i, c) => { const s = 0.5 + Math.random() * 0.6; d.position.set(x, s * 0.4, z); d.scale.set(s * 1.3, s, s * 1.2); d.rotation.set(0, Math.random() * 6, 0); if (T.nature === 'pines') c.setRGB(0.9, 0.94, 0.98); else c.setHSL(0.28 + Math.random() * 0.05, 0.45, 0.22 + Math.random() * 0.1); });
+    inst(lumpyIco(), std(0xffffff, 0.85, 0, { envMapIntensity: 0.25 }), shrubs, (d, [x, z], i, c) => { const s = 0.5 + Math.random() * 0.6; d.position.set(x, s * 0.4, z); d.scale.set(s * 1.3, s, s * 1.2); d.rotation.set(0, Math.random() * 6, 0); if (T.nature === 'pines') c.setRGB(0.9, 0.94, 0.98, THREE.SRGBColorSpace); else c.setHSL(0.28 + Math.random() * 0.05, 0.45, 0.22 + Math.random() * 0.1, THREE.SRGBColorSpace); });
   }
   // ------------------------------------------------------------------ decor: posters, pipes, rugs, clocks, ponds, flowers, grass
   decor(map, T) {
@@ -395,7 +395,7 @@ export class World {
         const tufts = []; for (let k = 0; k < r.w * r.d * 0.6; k++) { const x = r.x0 + Math.random() * r.w, z = r.z0 + Math.random() * r.d; if (floor(Math.floor(x), Math.floor(z))) tufts.push([x, z]); }
         const geo = new THREE.ConeGeometry(0.05, 0.28, 4); geo.translate(0, 0.14, 0);
         const m = new THREE.InstancedMesh(geo, std(0xffffff, 0.9), tufts.length * 3), d = new THREE.Object3D(), c = new THREE.Color();
-        let n = 0; for (const [x, z] of tufts) for (let b = 0; b < 3; b++) { d.position.set(x + (Math.random() - 0.5) * 0.15, 0, z + (Math.random() - 0.5) * 0.15); d.rotation.set((Math.random() - 0.5) * 0.6, Math.random() * 6, (Math.random() - 0.5) * 0.6); d.scale.setScalar(0.6 + Math.random() * 0.8); d.updateMatrix(); m.setMatrixAt(n, d.matrix); c.setHSL(0.25 + Math.random() * 0.06, 0.55, 0.25 + Math.random() * 0.15); m.setColorAt(n++, c); }
+        let n = 0; for (const [x, z] of tufts) for (let b = 0; b < 3; b++) { d.position.set(x + (Math.random() - 0.5) * 0.15, 0, z + (Math.random() - 0.5) * 0.15); d.rotation.set((Math.random() - 0.5) * 0.6, Math.random() * 6, (Math.random() - 0.5) * 0.6); d.scale.setScalar(0.6 + Math.random() * 0.8); d.updateMatrix(); m.setMatrixAt(n, d.matrix); c.setHSL(0.25 + Math.random() * 0.06, 0.55, 0.25 + Math.random() * 0.15, THREE.SRGBColorSpace); m.setColorAt(n++, c); }
         m.receiveShadow = true; S.add(m);
         // flower patches
         for (let k = 0; k < r.w * r.d / 30; k++) { const x = r.x0 + 1 + Math.random() * (r.w - 2), z = r.z0 + 1 + Math.random() * (r.d - 2); const colr = [0xff5a8a, 0xffe14a, 0xffffff, 0xa08aff][k % 4]; for (let f = 0; f < 6; f++) { const fl = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), std(colr, 0.6)); fl.position.set(x + (Math.random() - 0.5) * 0.7, 0.18, z + (Math.random() - 0.5) * 0.7); S.add(fl); } }
@@ -593,6 +593,22 @@ export class World {
   suck(x, z, kx, kz) { this.emitters.push({ kind: 'suck', x, z, kx, kz, t: 0, dur: 0.8 }); }
   swirl(x, z) { for (let i = 0; i < 4; i++) setTimeout(() => this.splash(x, z, 1.4 - i * 0.25), i * 120); this.burst(x, 0.3, z, 14, 1.2); }
   rainAt(x, z) { this.rainT = 4; this.rainC = { x, z }; for (const d of this.rainDrops) { d.x = x + (Math.random() - 0.5) * 34; d.z = z + (Math.random() - 0.5) * 26; d.y = Math.random() * 9; } }
+  // a rainbow for a Unicorn: arches up from its foot at (x, z); the unicorn sits on top
+  rainbowAt(id, x, z, on) {
+    this.rainbows ||= new Map();
+    let r = this.rainbows.get(id);
+    if (!on) { if (r) r.visible = false; return null; }
+    if (!r) {
+      r = new THREE.Group();
+      const cols = [0xff2a2a, 0xff8a1a, 0xffe32a, 0x3ad83a, 0x2a8aff, 0x5a3aff, 0xb04aff];
+      cols.forEach((c, i) => { const band = new THREE.Mesh(new THREE.TorusGeometry(5.2 - i * 0.22, 0.12, 8, 48, Math.PI), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.9, transparent: true, opacity: 0.85, roughness: 0.4 })); r.add(band); });
+      const sparkle = new THREE.PointLight(0xffd0ff, 6, 10, 1.6); sparkle.position.set(0, 5, 0); r.add(sparkle);
+      this.scene.add(r); this.rainbows.set(id, r);
+    }
+    r.visible = true; r.position.set(x + 4.6, 0, z); r.userData.top = new THREE.Vector3(x + 4.6, 5.2, z);
+    r.scale.y = Math.min(1, (r.scale.y || 0) + 0.05);
+    return r;
+  }
   buildDumps(dumps) {
     this.dumpMeshes = dumps.map(d => {
       const g = new THREE.Group(); g.position.set(d.x, 0, d.z);

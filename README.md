@@ -2,7 +2,7 @@
 
 A 3D social-deduction game about melting water puddles with googly eyes. Most players are **Water** and a few are secretly **Fire**: a Fire kill sets its victim on fire. Whoever gets voted out jumps into the lava pool.
 
-**Special roles:** 🧽 Sponge (Fire, leaves no body), 🪣 Bucket (Fire, scoops puddles and dumps them in 4 big buckets), 🚽 Toilet (Water, flushes from any vent to any vent), 🌧️ Raining (Water, washes away emergencies from anywhere), 🧯 Fire Extinguisher (Water, revives 2 unreported burned bodies per game), 🧊 Ice (Fire, freezes all Water 3× per game; frozen players wait 2 s then smash the screen 12 times), ☁️ Evaporation (Water, leaves its body as vapor for 20 s to spy through walls).
+**Special roles:** 🧽 Sponge (Fire, leaves no body), 🪣 Bucket (Fire, scoops puddles and dumps them in 4 big buckets), 🚽 Toilet (Water, flushes from any vent to any vent), 🌧️ Raining (Water, washes away emergencies from anywhere), 🧯 Fire Extinguisher (Water, revives 2 unreported burned bodies per game), 🧊 Ice (Fire, freezes all Water 3× per game; frozen players wait 2 s then smash the screen 12 times), ☁️ Evaporation (Water, leaves its body as vapor for 20 s to spy through walls), 🦄 Unicorn (Water, rides a rainbow into the sky for 15 s to see the whole map; Fire can burn the rainbow's foot), 🫧 Bubble (Water, 3 tracker bubbles that alert you when a tracked puddle kills).
 
 - **PLAY SOLO**: you plus computer puddles. Runs entirely in the page and works offline in the Mac app.
 - **PLAY ONLINE**: real players only (3–12, no computer puddles), with public lobbies, 4-letter codes and invite links.
